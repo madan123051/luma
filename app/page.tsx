@@ -3,36 +3,13 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { photoPath, photos, type Photo } from "@/lib/gallery-data";
 import { downloadPublicPhoto } from "@/lib/image-processing";
 import {
   addPhotoComment, getPhotoComments, getPhotoStats, recordSavedShare,
   toggleSavedLike, type PhotoComment, type PhotoStats,
 } from "@/lib/interactions";
 import { getApprovedSubmissions } from "@/lib/submissions";
-
-type Photo = {
-  id: number | string;
-  title: string;
-  photographer: string;
-  category: string;
-  src: string;
-  height: "tall" | "wide" | "standard";
-  likes: number;
-  watermarked?: boolean;
-  sourceUrl?: string;
-};
-
-const photos: Photo[] = [
-  { id: 1, title: "Dolomites, after rain", photographer: "Maya Lin", category: "Nature", src: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=82", height: "tall", likes: 2841 },
-  { id: 2, title: "Quiet geometry", photographer: "Theo Martin", category: "Architecture", src: "https://images.unsplash.com/photo-1487958449943-2429e8be8625?auto=format&fit=crop&w=1200&q=82", height: "standard", likes: 1922 },
-  { id: 3, title: "Sunday light", photographer: "June Park", category: "People", src: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1200&q=82", height: "tall", likes: 3510 },
-  { id: 4, title: "Slow coast", photographer: "Ari Costa", category: "Travel", src: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=82", height: "wide", likes: 2210 },
-  { id: 5, title: "Night pulse", photographer: "Nico Vale", category: "Street", src: "https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1200&q=82", height: "standard", likes: 1604 },
-  { id: 6, title: "Green room", photographer: "Elsa Moreau", category: "Interiors", src: "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=82", height: "tall", likes: 2987 },
-  { id: 7, title: "Freshly made", photographer: "Omar Khan", category: "Food", src: "https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=1200&q=82", height: "standard", likes: 1320 },
-  { id: 8, title: "Salt air", photographer: "Rin Sato", category: "Nature", src: "https://images.unsplash.com/photo-1476673160081-cf065607f449?auto=format&fit=crop&w=1200&q=82", height: "wide", likes: 2664 },
-  { id: 9, title: "Soft focus", photographer: "Léa Dubois", category: "Fashion", src: "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1200&q=82", height: "tall", likes: 4120 },
-];
 
 const categories = ["All", "Nature", "People", "Architecture", "Travel", "Street", "Fashion", "Food", "Interiors"];
 const emptyStats: PhotoStats = { likesCount: 0, sharesCount: 0, likedByCurrentUser: false };
@@ -64,6 +41,9 @@ export default function Home() {
       likes: 0,
       watermarked: item.publicVersion,
       sourceUrl: item.downloadUrl,
+      source: "community",
+      description: item.description,
+      publishedAt: item.reviewedAt,
     })))).catch(() => {});
   }, []);
 
@@ -73,7 +53,7 @@ export default function Home() {
     const photoId = new URLSearchParams(window.location.search).get("photo");
     if (!photoId) return;
     const sharedPhoto = allPhotos.find((photo) => String(photo.id) === photoId);
-    if (sharedPhoto) setSelected(sharedPhoto);
+    if (sharedPhoto) window.location.replace(photoPath(sharedPhoto));
   }, [allPhotos]);
 
   useEffect(() => {
@@ -152,7 +132,7 @@ export default function Home() {
     const data = {
       title: `${photo.title} — LUMA`,
       text: `See ${photo.title} by ${photo.photographer} on LUMA`,
-      url: `${window.location.origin}/?photo=${encodeURIComponent(String(photo.id))}`,
+      url: `${window.location.origin}${photoPath(photo)}`,
     };
     try {
       if (navigator.share) await navigator.share(data);

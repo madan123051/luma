@@ -6,12 +6,14 @@ import {
 } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "./firebase";
+import { photoSlug } from "./gallery-data";
 import { createPublicPhoto } from "./image-processing";
 
 export type SubmissionStatus = "pending" | "approved" | "rejected";
 
 export type Submission = {
   id: string;
+  slug: string;
   title: string;
   category: string;
   description: string;
@@ -34,12 +36,15 @@ export type Submission = {
 
 function fromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Submission {
   const data = snapshot.data();
+  const title = data.title ?? "";
+  const photographerName = data.photographerName ?? "";
   return {
     id: snapshot.id,
-    title: data.title ?? "",
+    slug: data.slug ?? photoSlug({ title, photographer: photographerName }),
+    title,
     category: data.category ?? "",
     description: data.description ?? "",
-    photographerName: data.photographerName ?? "",
+    photographerName,
     submitterEmail: data.submitterEmail ?? "",
     submitterUid: data.submitterUid ?? "",
     storagePath: data.storagePath ?? "",
@@ -84,6 +89,7 @@ export async function createSubmission(input: {
     const status = input.status ?? "pending";
     await setDoc(docRef, {
       title: input.title.slice(0, 140),
+      slug: photoSlug({ title: input.title, photographer: input.photographerName }),
       category: input.category.slice(0, 50),
       description: input.description.slice(0, 1000),
       photographerName: input.photographerName.slice(0, 100),
