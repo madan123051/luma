@@ -41,7 +41,7 @@ export function AdminDashboard() {
     const form=new FormData(formElement);
     const file=form.get("photo");
     if(!(file instanceof File)||!file.size)return setUploadMessage("Please select a photograph.");
-    if(file.size>20*1024*1024)return setUploadMessage("Image must be 20MB or smaller.");
+    if(file.size>50*1024*1024)return setUploadMessage("Image must be 50MB or smaller.");
     setBusy(true);setUploadMessage("");
     try{
       await createSubmission({
@@ -81,7 +81,7 @@ export function AdminDashboard() {
             }}/>
             {selectedPreviewUrl&&<img className="selected-thumbnail" src={selectedPreviewUrl} alt="Selected photograph preview"/>}
             <b>{selectedFileName?"Photograph selected":"Select your photograph"}</b>
-            <span className={selectedFileName?"selected-file":""}>{selectedFileName||"Tap or click here · JPG, PNG or WEBP · maximum 20MB"}</span>
+            <span className={selectedFileName?"selected-file":""}>{selectedFileName||"Tap or click here · JPG, PNG or WEBP · maximum 50MB"}</span>
           </label>
           <div className="form-pair"><label>Photograph title<input name="title" maxLength={140} required/></label><label>Photographer name<input name="photographerName" defaultValue={user.displayName??"WildSaura"} maxLength={100} required/></label></div>
           <label>Category<select name="category" required defaultValue=""><option value="" disabled>Choose one</option>{categories.map((category)=><option key={category}>{category}</option>)}</select></label>

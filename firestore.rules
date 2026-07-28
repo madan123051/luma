@@ -28,7 +28,7 @@ service cloud.firestore {
         )
         && request.resource.data.storagePath == 'submissions/' + request.auth.uid + '/' + submissionId + '/original'
         && request.resource.data.previewPath == 'submissions/' + request.auth.uid + '/' + submissionId + '/preview.jpg'
-        && request.resource.data.fileSize <= 20 * 1024 * 1024
+        && request.resource.data.fileSize <= 50 * 1024 * 1024
         && request.resource.data.previewFileSize <= 4 * 1024 * 1024
         && request.resource.data.publicVersion == true;
 

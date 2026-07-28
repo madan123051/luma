@@ -19,6 +19,7 @@ type Photo = {
   height: "tall" | "wide" | "standard";
   likes: number;
   watermarked?: boolean;
+  sourceUrl?: string;
 };
 
 const photos: Photo[] = [
@@ -58,10 +59,11 @@ export default function Home() {
       title: item.title,
       photographer: item.photographerName,
       category: item.category,
-      src: item.downloadUrl,
+      src: item.publicVersion ? item.downloadUrl : `/api/preview?url=${encodeURIComponent(item.downloadUrl)}`,
       height: "standard",
       likes: 0,
       watermarked: item.publicVersion,
+      sourceUrl: item.downloadUrl,
     })))).catch(() => {});
   }, []);
 
@@ -176,7 +178,7 @@ export default function Home() {
     setDownloadingId(photo.id);
     try {
       await downloadPublicPhoto({
-        url: photo.src,
+        url: photo.sourceUrl ?? photo.src,
         title: photo.title,
         photographer: photo.photographer,
         alreadyWatermarked: photo.watermarked,

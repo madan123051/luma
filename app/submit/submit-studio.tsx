@@ -39,7 +39,7 @@ export function SubmitStudio() {
     const form = new FormData(formElement);
     const file = form.get("photo");
     if (!(file instanceof File)) return;
-    if (file.size > 20 * 1024 * 1024) return setMessage("Image must be 20MB or smaller.");
+    if (file.size > 50 * 1024 * 1024) return setMessage("Image must be 50MB or smaller.");
     setBusy(true); setMessage("");
     try {
       await createSubmission({
@@ -76,7 +76,7 @@ export function SubmitStudio() {
           }} />
           {selectedPreviewUrl && <img className="selected-thumbnail" src={selectedPreviewUrl} alt="Selected photograph preview" />}
           <b>{selectedFileName ? "Photograph selected" : "Select your photograph"}</b>
-          <span className={selectedFileName ? "selected-file" : ""}>{selectedFileName || "Tap or click here · JPG, PNG or WEBP · maximum 20MB"}</span>
+          <span className={selectedFileName ? "selected-file" : ""}>{selectedFileName || "Tap or click here · JPG, PNG or WEBP · maximum 50MB"}</span>
         </label>
         <div className="form-pair"><label>Photograph title<input name="title" maxLength={140} required /></label><label>Photographer name<input name="photographerName" defaultValue={user.displayName ?? ""} maxLength={100} required /></label></div>
         <label>Category<select name="category" required defaultValue=""><option value="" disabled>Choose one</option>{["Nature","People","Architecture","Travel","Street","Fashion","Food","Interiors","Wildlife","Birds","Landscapes"].map((c)=><option key={c}>{c}</option>)}</select></label>
