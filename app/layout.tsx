@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://luma-photo-gallery.madan123050.chatgpt.site"),
+  metadataBase: new URL("https://luma.wildsaura.com"),
   title: { default: "LUMA by WildSaura — Images worth keeping", template: "%s | LUMA by WildSaura" },
   description: "A WildSaura project for discovering, sharing and licensing remarkable photography from independent creators.",
   keywords: ["free photography", "high resolution photos", "independent photographers", "download photos", "photo community"],

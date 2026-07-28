@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in [
+          'help@wildsaura.com',
+          'madan123050@gmail.com'
+        ];
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if resource.data.status == 'approved'
+        || isAdmin()
+        || (signedIn() && resource.data.submitterUid == request.auth.uid);
+
+      allow create: if signedIn()
+        && request.resource.data.submitterUid == request.auth.uid
+        && request.resource.data.submitterEmail == request.auth.token.email
+        && (
+          request.resource.data.status == 'pending'
+          || (isAdmin() && request.resource.data.status == 'approved')
+        )
+        && request.resource.data.storagePath == 'submissions/' + request.auth.uid + '/' + submissionId + '/image'
+        && request.resource.data.fileSize <= 20 * 1024 * 1024;
+
+      allow update: if isAdmin();
+      allow delete: if isAdmin()
+        || (signedIn()
+          && resource.data.submitterUid == request.auth.uid
+          && resource.data.status == 'pending');
+    }
+  }
+}

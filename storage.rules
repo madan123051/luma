@@ -1,0 +1,31 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in [
+          'help@wildsaura.com',
+          'madan123050@gmail.com'
+        ];
+    }
+
+    match /submissions/{userId}/{submissionId}/image {
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow read: if isAdmin()
+        || (signedIn() && request.auth.uid == userId)
+        || firestore.get(/databases/(default)/documents/submissions/$(submissionId)).data.status == 'approved';
+
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow update: if false;
+    }
+  }
+}
