@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { downloadPublicPhoto } from "@/lib/image-processing";
 import { getApprovedSubmissions } from "@/lib/submissions";
 
 type Photo = {
@@ -11,6 +12,7 @@ type Photo = {
   src: string;
   height: "tall" | "wide" | "standard";
   likes: number;
+  watermarked?: boolean;
 };
 
 const photos: Photo[] = [
@@ -36,11 +38,12 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState<string[]>([]);
+  const [downloadingId, setDownloadingId] = useState<number | string | null>(null);
 
   useEffect(() => {
     getApprovedSubmissions().then((items) => setCommunityPhotos(items.map((item) => ({
       id:item.id, title:item.title, photographer:item.photographerName, category:item.category,
-      src:item.downloadUrl, height:"standard", likes:0,
+      src:item.downloadUrl, height:"standard", likes:0, watermarked:item.publicVersion,
     })))).catch(() => {});
   }, []);
 
@@ -63,6 +66,22 @@ export default function Home() {
     const data = { title: `${photo.title} — LUMA`, text: `See ${photo.title} by ${photo.photographer} on LUMA`, url: window.location.href };
     if (navigator.share) await navigator.share(data).catch(() => {});
     else await navigator.clipboard.writeText(window.location.href).then(() => notify("Link copied to clipboard"));
+  }
+
+  async function download(photo: Photo) {
+    setDownloadingId(photo.id);
+    try {
+      await downloadPublicPhoto({
+        url: photo.src,
+        title: photo.title,
+        alreadyWatermarked: photo.watermarked,
+      });
+      notify("Compressed copyright download ready");
+    } catch {
+      notify("Download could not be prepared. Please try again.");
+    } finally {
+      setDownloadingId(null);
+    }
   }
 
   function addComment(event: FormEvent) {
@@ -118,7 +137,7 @@ export default function Home() {
                 <div className="quick-actions">
                   <button onClick={() => toggleLike(photo.id)} className={liked.includes(photo.id) ? "liked" : ""} aria-label="Like photo">{liked.includes(photo.id) ? "♥" : "♡"}</button>
                   <button onClick={() => share(photo)} aria-label="Share photo">↗</button>
-                  <a href={photo.src.replace("w=1200", "w=2400")} target="_blank" download aria-label="Download photo">↓</a>
+                  <button onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-label="Download compressed copyright photo">{downloadingId === photo.id ? "…" : "↓"}</button>
                 </div>
               </div>
               <div className="mobile-meta"><span>{photo.title} · {photo.photographer}</span><button onClick={() => toggleLike(photo.id)}>{liked.includes(photo.id) ? "♥" : "♡"} {photo.likes + (liked.includes(photo.id) ? 1 : 0)}</button></div>
@@ -142,7 +161,7 @@ export default function Home() {
       {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}>
         <section className="lightbox" onMouseDown={(e) => e.stopPropagation()} aria-modal="true" role="dialog">
           <button className="close" onClick={() => setSelected(null)} aria-label="Close">×</button>
-          <div className="lightbox-image"><img src={selected.src.replace("w=1200", "w=1800")} alt={selected.title} /></div>
+          <div className="lightbox-image"><img src={selected.src} alt={selected.title} /><span>Compressed preview · © WildSaura</span></div>
           <aside>
             <span className="tag">{selected.category}</span>
             <h2>{selected.title}</h2>
@@ -150,7 +169,8 @@ export default function Home() {
             <div className="detail-actions">
               <button onClick={() => toggleLike(selected.id)}>{liked.includes(selected.id) ? "♥ Liked" : "♡ Like"} · {selected.likes + (liked.includes(selected.id) ? 1 : 0)}</button>
               <button onClick={() => share(selected)}>Share ↗</button>
-              <a href={selected.src.replace("w=1200", "w=2400")} target="_blank" download>Download ↓</a>
+              <button onClick={() => download(selected)} disabled={downloadingId === selected.id}>{downloadingId === selected.id ? "Preparing download…" : "Download compressed ↓"}</button>
+              <a href="/premium">View/download original · Premium soon</a>
             </div>
             <div className="comments">
               <h3>Conversation <span>{comments.length}</span></h3>
