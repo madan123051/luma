@@ -129,11 +129,7 @@ export default function Home() {
   }
 
   async function share(photo: Photo) {
-    const data = {
-      title: `${photo.title} — LUMA`,
-      text: `See ${photo.title} by ${photo.photographer} on LUMA`,
-      url: `${window.location.origin}${photoPath(photo)}`,
-    };
+    const data = { url: `${window.location.origin}${photoPath(photo)}` };
     try {
       if (navigator.share) await navigator.share(data);
       else {

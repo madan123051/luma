@@ -12,6 +12,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const photo = await getPhotoBySlug(slug);
   if (!photo) return { title: "Photograph not found", robots: { index: false, follow: false } };
   const canonical = photoPath(photo);
+  const socialImage = `${canonical}/social-card.jpg?v=2`;
   const description = photo.description?.trim() || `${photo.title}, a ${photo.category.toLowerCase()} photograph by ${photo.photographer}, featured on LUMA by WildSaura.`;
   return {
     title: `${photo.title} by ${photo.photographer}`,
@@ -25,13 +26,20 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: `${photo.title} by ${photo.photographer}`,
       description,
       siteName: "LUMA by WildSaura",
-      images: [{ url: `${canonical}/opengraph-image`, width: 1200, height: 630, alt: `${photo.title} by ${photo.photographer}` }],
+      images: [{
+        url: socialImage,
+        secureUrl: socialImage,
+        type: "image/jpeg",
+        width: 1200,
+        height: 630,
+        alt: `${photo.title} by ${photo.photographer}`,
+      }],
     },
     twitter: {
       card: "summary_large_image",
       title: `${photo.title} by ${photo.photographer}`,
       description,
-      images: [`${canonical}/opengraph-image`],
+      images: [socialImage],
     },
   };
 }
