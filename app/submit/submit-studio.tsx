@@ -13,6 +13,11 @@ export function SubmitStudio() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState("");
+  const [selectedPreviewUrl, setSelectedPreviewUrl] = useState("");
+
+  useEffect(() => () => {
+    if (selectedPreviewUrl) URL.revokeObjectURL(selectedPreviewUrl);
+  }, [selectedPreviewUrl]);
 
   useEffect(() => onAuthStateChanged(auth, (current) => {
     if (isAdminEmail(current?.email)) {
@@ -47,6 +52,7 @@ export function SubmitStudio() {
       });
       formElement.reset();
       setSelectedFileName("");
+      setSelectedPreviewUrl("");
       setMessage("Submitted successfully. Your photograph is private and waiting for admin review.");
       await load(user);
     } catch {
@@ -63,7 +69,12 @@ export function SubmitStudio() {
     <div className="studio-grid">
       <form className="submission-form" onSubmit={submit}>
         <label className="dropzone large">
-          <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event) => setSelectedFileName(event.target.files?.[0]?.name ?? "")} />
+          <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event) => {
+            const file = event.target.files?.[0];
+            setSelectedFileName(file?.name ?? "");
+            setSelectedPreviewUrl(file ? URL.createObjectURL(file) : "");
+          }} />
+          {selectedPreviewUrl && <img className="selected-thumbnail" src={selectedPreviewUrl} alt="Selected photograph preview" />}
           <b>{selectedFileName ? "Photograph selected" : "Select your photograph"}</b>
           <span className={selectedFileName ? "selected-file" : ""}>{selectedFileName || "Tap or click here · JPG, PNG or WEBP · maximum 20MB"}</span>
         </label>

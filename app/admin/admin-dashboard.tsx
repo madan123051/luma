@@ -19,6 +19,9 @@ export function AdminDashboard() {
   const [view,setView]=useState<"review"|"upload">("review");
   const [uploadMessage,setUploadMessage]=useState("");
   const [selectedFileName,setSelectedFileName]=useState("");
+  const [selectedPreviewUrl,setSelectedPreviewUrl]=useState("");
+
+  useEffect(()=>()=>{if(selectedPreviewUrl)URL.revokeObjectURL(selectedPreviewUrl)},[selectedPreviewUrl]);
 
   async function load(){ setItems(await getAllSubmissions()); }
   useEffect(()=>onAuthStateChanged(auth,(current)=>{setUser(current);setAuthReady(true);if(isAdminEmail(current?.email)) load().catch(()=>setItems([]));}),[]);
@@ -52,6 +55,7 @@ export function AdminDashboard() {
       });
       formElement.reset();
       setSelectedFileName("");
+      setSelectedPreviewUrl("");
       setUploadMessage("Published successfully. The photograph is now live in the gallery.");
       await load();
     }catch{
@@ -70,7 +74,12 @@ export function AdminDashboard() {
         <div><h2>Upload directly to LUMA</h2><p>Admin uploads are approved automatically and appear in the public gallery immediately.</p></div>
         <form className="submission-form" onSubmit={upload}>
           <label className="dropzone large">
-            <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event)=>setSelectedFileName(event.target.files?.[0]?.name??"")}/>
+            <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event)=>{
+              const file=event.target.files?.[0];
+              setSelectedFileName(file?.name??"");
+              setSelectedPreviewUrl(file?URL.createObjectURL(file):"");
+            }}/>
+            {selectedPreviewUrl&&<img className="selected-thumbnail" src={selectedPreviewUrl} alt="Selected photograph preview"/>}
             <b>{selectedFileName?"Photograph selected":"Select your photograph"}</b>
             <span className={selectedFileName?"selected-file":""}>{selectedFileName||"Tap or click here · JPG, PNG or WEBP · maximum 20MB"}</span>
           </label>

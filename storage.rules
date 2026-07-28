@@ -14,15 +14,19 @@ service firebase.storage {
         ];
     }
 
-    match /submissions/{userId}/{submissionId}/image {
+    match /submissions/{userId}/{submissionId}/{fileName} {
       allow create: if signedIn()
         && request.auth.uid == userId
+        && fileName in ['original', 'preview.jpg']
         && request.resource.size <= 20 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp)');
 
       allow read: if isAdmin()
         || (signedIn() && request.auth.uid == userId)
-        || firestore.get(/databases/(default)/documents/submissions/$(submissionId)).data.status == 'approved';
+        || (
+          fileName == 'preview.jpg'
+          && firestore.get(/databases/(default)/documents/submissions/$(submissionId)).data.status == 'approved'
+        );
 
       allow delete: if isAdmin() || (signedIn() && request.auth.uid == userId);
       allow update: if false;

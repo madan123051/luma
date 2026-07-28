@@ -6,6 +6,7 @@ import {
 } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "./firebase";
+import { createPublicPhoto } from "./image-processing";
 
 export type SubmissionStatus = "pending" | "approved" | "rejected";
 
@@ -18,9 +19,12 @@ export type Submission = {
   submitterEmail: string;
   submitterUid: string;
   storagePath: string;
+  previewPath: string;
   downloadUrl: string;
   contentType: string;
   fileSize: number;
+  previewFileSize: number;
+  publicVersion: boolean;
   status: SubmissionStatus;
   adminNote: string;
   createdAt: Date | null;
@@ -39,9 +43,12 @@ function fromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Submission
     submitterEmail: data.submitterEmail ?? "",
     submitterUid: data.submitterUid ?? "",
     storagePath: data.storagePath ?? "",
+    previewPath: data.previewPath ?? data.storagePath ?? "",
     downloadUrl: data.downloadUrl ?? "",
     contentType: data.contentType ?? "",
     fileSize: data.fileSize ?? 0,
+    previewFileSize: data.previewFileSize ?? data.fileSize ?? 0,
+    publicVersion: data.publicVersion === true,
     status: data.status ?? "pending",
     adminNote: data.adminNote ?? "",
     createdAt: data.createdAt?.toDate?.() ?? null,
@@ -56,15 +63,24 @@ export async function createSubmission(input: {
   status?: "pending" | "approved";
 }) {
   const docRef = doc(collection(db, "submissions"));
-  const storagePath = `submissions/${input.user.uid}/${docRef.id}/image`;
+  const storagePath = `submissions/${input.user.uid}/${docRef.id}/original`;
+  const previewPath = `submissions/${input.user.uid}/${docRef.id}/preview.jpg`;
   const objectRef = ref(storage, storagePath);
-  await uploadBytes(objectRef, input.file, {
-    contentType: input.file.type,
-    customMetadata: { originalName: input.file.name.slice(0, 180) },
-  });
+  const previewRef = ref(storage, previewPath);
+  const publicPhoto = await createPublicPhoto(input.file, input.photographerName);
 
   try {
-    const downloadUrl = await getDownloadURL(objectRef);
+    await Promise.all([
+      uploadBytes(objectRef, input.file, {
+        contentType: input.file.type,
+        customMetadata: { originalName: input.file.name.slice(0, 180) },
+      }),
+      uploadBytes(previewRef, publicPhoto, {
+        contentType: "image/jpeg",
+        customMetadata: { version: "public-watermarked" },
+      }),
+    ]);
+    const downloadUrl = await getDownloadURL(previewRef);
     const status = input.status ?? "pending";
     await setDoc(docRef, {
       title: input.title.slice(0, 140),
@@ -74,9 +90,12 @@ export async function createSubmission(input: {
       submitterEmail: input.user.email,
       submitterUid: input.user.uid,
       storagePath,
+      previewPath,
       downloadUrl,
       contentType: input.file.type,
       fileSize: input.file.size,
+      previewFileSize: publicPhoto.size,
+      publicVersion: true,
       status,
       adminNote: "",
       createdAt: serverTimestamp(),
@@ -85,7 +104,10 @@ export async function createSubmission(input: {
     });
     return docRef.id;
   } catch (error) {
-    await deleteObject(objectRef).catch(() => {});
+    await Promise.all([
+      deleteObject(objectRef).catch(() => {}),
+      deleteObject(previewRef).catch(() => {}),
+    ]);
     throw error;
   }
 }
