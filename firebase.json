@@ -1,0 +1,25 @@
+{
+  "firestore": {
+    "database": "(default)",
+    "location": "nam5",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "auth": {
+    "providers": {
+      "anonymous": false,
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "LUMA by WildSaura",
+        "supportEmail": "madan123050@gmail.com",
+        "authorizedRedirectUris": [
+          "https://luma.wildsaura.com/__/auth/handler",
+          "https://luma-d489e.firebaseapp.com/__/auth/handler"
+        ]
+      }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { getApprovedSubmissions } from "@/lib/submissions";
 
 type Photo = {
   id: number | string;
@@ -37,8 +38,10 @@ export default function Home() {
   const [comments, setComments] = useState<string[]>([]);
 
   useEffect(() => {
-    fetch("/api/gallery").then((response) => response.ok ? response.json() : { photos: [] })
-      .then((data) => setCommunityPhotos((data as { photos?: Photo[] }).photos ?? [])).catch(() => {});
+    getApprovedSubmissions().then((items) => setCommunityPhotos(items.map((item) => ({
+      id:item.id, title:item.title, photographer:item.photographerName, category:item.category,
+      src:item.downloadUrl, height:"standard", likes:0,
+    })))).catch(() => {});
   }, []);
 
   const allPhotos = useMemo(() => [...communityPhotos, ...photos], [communityPhotos]);
@@ -77,6 +80,7 @@ export default function Home() {
           <a href="#discover">Discover</a>
           <a href="#collections">Collections</a>
           <a href="#about">About</a>
+          <a href="/login">Sign in</a>
           <a href="https://www.wildsaura.com">WildSaura ↗</a>
         </nav>
         <a className="upload-button" href="/submit">Share your work <span>↗</span></a>
