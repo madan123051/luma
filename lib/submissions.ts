@@ -67,7 +67,7 @@ export async function createSubmission(input: {
   const previewPath = `submissions/${input.user.uid}/${docRef.id}/preview.jpg`;
   const objectRef = ref(storage, storagePath);
   const previewRef = ref(storage, previewPath);
-  const publicPhoto = await createPublicPhoto(input.file);
+  const publicPhoto = await createPublicPhoto(input.file, input.photographerName);
 
   try {
     await Promise.all([

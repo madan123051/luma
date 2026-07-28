@@ -74,6 +74,7 @@ export default function Home() {
       await downloadPublicPhoto({
         url: photo.src,
         title: photo.title,
+        photographer: photo.photographer,
         alreadyWatermarked: photo.watermarked,
       });
       notify("Compressed copyright download ready");

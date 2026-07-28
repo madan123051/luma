@@ -26,10 +26,11 @@ function canvasToBlob(canvas: HTMLCanvasElement, quality: number) {
   });
 }
 
-function drawCopyright(ctx: CanvasRenderingContext2D, width: number, height: number) {
+function drawCopyright(ctx: CanvasRenderingContext2D, width: number, height: number, credit: string) {
   const fontSize = Math.max(16, Math.min(34, Math.round(width * 0.014)));
   const padding = Math.max(14, Math.round(fontSize * 0.7));
-  const text = `© ${new Date().getFullYear()} WILDSAURA · LUMA`;
+  const safeCredit = credit.trim().slice(0, 60).toUpperCase() || "CREATOR";
+  const text = `© ${new Date().getFullYear()} ${safeCredit} · LUMA BY WILDSAURA`;
   ctx.font = `700 ${fontSize}px Arial, sans-serif`;
   ctx.textBaseline = "middle";
   const textWidth = ctx.measureText(text).width;
@@ -43,7 +44,7 @@ function drawCopyright(ctx: CanvasRenderingContext2D, width: number, height: num
   ctx.fillText(text, x + padding, y + boxHeight / 2);
 }
 
-export async function createPublicPhoto(source: Blob) {
+export async function createPublicPhoto(source: Blob, credit = "Creator") {
   const { image, objectUrl } = await loadImage(source);
   let lastBlob: Blob | null = null;
 
@@ -59,7 +60,7 @@ export async function createPublicPhoto(source: Blob) {
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Image processing is unavailable in this browser.");
       ctx.drawImage(image, 0, 0, width, height);
-      drawCopyright(ctx, width, height);
+      drawCopyright(ctx, width, height, credit);
 
       for (const quality of [0.9, 0.82, 0.74, 0.66]) {
         lastBlob = await canvasToBlob(canvas, quality);
@@ -77,12 +78,13 @@ export async function createPublicPhoto(source: Blob) {
 export async function downloadPublicPhoto(input: {
   url: string;
   title: string;
+  photographer: string;
   alreadyWatermarked?: boolean;
 }) {
   const response = await fetch(input.url);
   if (!response.ok) throw new Error("The photograph could not be downloaded.");
   const source = await response.blob();
-  const output = input.alreadyWatermarked ? source : await createPublicPhoto(source);
+  const output = input.alreadyWatermarked ? source : await createPublicPhoto(source, input.photographer);
   const objectUrl = URL.createObjectURL(output);
   const safeTitle = input.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "luma-photo";
   const link = document.createElement("a");
