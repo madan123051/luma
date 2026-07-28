@@ -81,10 +81,13 @@ export async function downloadPublicPhoto(input: {
   photographer: string;
   alreadyWatermarked?: boolean;
 }) {
-  const response = await fetch(input.url);
+  const response = await fetch("/api/download", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
   if (!response.ok) throw new Error("The photograph could not be downloaded.");
-  const source = await response.blob();
-  const output = input.alreadyWatermarked ? source : await createPublicPhoto(source, input.photographer);
+  const output = await response.blob();
   const objectUrl = URL.createObjectURL(output);
   const safeTitle = input.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "luma-photo";
   const link = document.createElement("a");

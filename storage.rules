@@ -18,7 +18,10 @@ service firebase.storage {
       allow create: if signedIn()
         && request.auth.uid == userId
         && fileName in ['original', 'preview.jpg']
-        && request.resource.size <= 20 * 1024 * 1024
+        && (
+          (fileName == 'original' && request.resource.size <= 50 * 1024 * 1024)
+          || (fileName == 'preview.jpg' && request.resource.size <= 4 * 1024 * 1024)
+        )
         && request.resource.contentType.matches('image/(jpeg|png|webp)');
 
       allow read: if isAdmin()
