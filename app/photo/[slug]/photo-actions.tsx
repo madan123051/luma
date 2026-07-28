@@ -13,14 +13,11 @@ export function PhotoActions(props: {
   const [message, setMessage] = useState("");
 
   async function share() {
-    const data = {
-      title: `${props.title} by ${props.photographer} — LUMA`,
-      text: `See ${props.title} by ${props.photographer} on LUMA`,
-      url: window.location.href,
-    };
+    const url = window.location.href.split("?")[0];
+    const data = { url };
     if (navigator.share) await navigator.share(data).catch(() => {});
     else {
-      await navigator.clipboard.writeText(window.location.href);
+      await navigator.clipboard.writeText(url);
       setMessage("Link copied");
     }
   }

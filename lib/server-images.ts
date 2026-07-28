@@ -2,6 +2,7 @@ import sharp from "sharp";
 
 const MAX_SOURCE_BYTES = 55 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024;
+const MAX_SOCIAL_BYTES = 280 * 1024;
 const allowedHosts = new Set([
   "images.unsplash.com",
   "firebasestorage.googleapis.com",
@@ -73,6 +74,20 @@ export async function createGalleryPreview(source: Buffer) {
   return sharp(resized.data)
     .jpeg({ quality: 78, progressive: true, mozjpeg: true })
     .toBuffer();
+}
+
+export async function createSocialPreview(source: Buffer) {
+  const pipeline = sharp(source, { failOn: "error" })
+    .rotate()
+    .resize({ width: 1200, height: 630, fit: "cover", position: "attention" });
+  let output: Buffer = Buffer.alloc(0);
+  for (const quality of [70, 60, 50, 42, 34, 28]) {
+    output = await pipeline.clone()
+      .jpeg({ quality, progressive: true, mozjpeg: true, chromaSubsampling: "4:2:0" })
+      .toBuffer();
+    if (output.byteLength <= MAX_SOCIAL_BYTES) break;
+  }
+  return output;
 }
 
 export async function createPublicDownload(source: Buffer, photographer: string, alreadyWatermarked: boolean) {
