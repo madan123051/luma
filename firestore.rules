@@ -38,5 +38,100 @@ service cloud.firestore {
           && resource.data.submitterUid == request.auth.uid
           && resource.data.status == 'pending');
     }
+
+    match /photoStats/{photoId} {
+      function likePath() {
+        return /databases/$(database)/documents/photoStats/$(photoId)/likes/$(request.auth.uid);
+      }
+
+      function sharePath() {
+        return /databases/$(database)/documents/photoStats/$(photoId)/shares/$(request.auth.uid);
+      }
+
+      function validStats() {
+        return request.resource.data.keys().hasOnly(['likesCount', 'sharesCount', 'updatedAt'])
+          && request.resource.data.likesCount is int
+          && request.resource.data.sharesCount is int
+          && request.resource.data.likesCount >= 0
+          && request.resource.data.sharesCount >= 0
+          && request.resource.data.updatedAt == request.time;
+      }
+
+      allow read: if true;
+      allow create: if signedIn()
+        && validStats()
+        && request.resource.data.likesCount <= 1
+        && request.resource.data.sharesCount <= 1
+        && (request.resource.data.likesCount == 0 || existsAfter(likePath()))
+        && (request.resource.data.sharesCount == 0 || existsAfter(sharePath()));
+      allow update: if signedIn()
+        && validStats()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['likesCount', 'sharesCount', 'updatedAt'])
+        && request.resource.data.likesCount - resource.data.likesCount >= -1
+        && request.resource.data.likesCount - resource.data.likesCount <= 1
+        && request.resource.data.sharesCount - resource.data.sharesCount >= 0
+        && request.resource.data.sharesCount - resource.data.sharesCount <= 1
+        && (
+          request.resource.data.likesCount == resource.data.likesCount
+          || (
+            request.resource.data.likesCount == resource.data.likesCount + 1
+            && !exists(likePath())
+            && existsAfter(likePath())
+          )
+          || (
+            request.resource.data.likesCount == resource.data.likesCount - 1
+            && exists(likePath())
+            && !existsAfter(likePath())
+          )
+        )
+        && (
+          request.resource.data.sharesCount == resource.data.sharesCount
+          || (
+            request.resource.data.sharesCount == resource.data.sharesCount + 1
+            && !exists(sharePath())
+            && existsAfter(sharePath())
+          )
+        );
+      allow delete: if false;
+
+      match /likes/{userId} {
+        allow read: if true;
+        allow create: if signedIn()
+          && userId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.createdAt == request.time;
+        allow delete: if signedIn() && userId == request.auth.uid;
+        allow update: if false;
+      }
+
+      match /shares/{userId} {
+        allow read: if true;
+        allow create: if signedIn()
+          && userId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['uid', 'email', 'displayName', 'text', 'createdAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() <= 100
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.createdAt == request.time;
+        allow delete: if isAdmin()
+          || (signedIn() && resource.data.uid == request.auth.uid);
+        allow update: if false;
+      }
+    }
   }
 }
