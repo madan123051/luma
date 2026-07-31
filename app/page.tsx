@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { photoPath, photos, type Photo } from "@/lib/gallery-data";
@@ -9,10 +9,12 @@ import {
   addPhotoComment, getPhotoComments, getPhotoStats, recordSavedShare,
   toggleSavedLike, type PhotoComment, type PhotoStats,
 } from "@/lib/interactions";
-import { getApprovedSubmissions } from "@/lib/submissions";
 
 const categories = ["All", "Nature", "People", "Architecture", "Travel", "Street", "Fashion", "Food", "Interiors"];
 const emptyStats: PhotoStats = { likesCount: 0, sharesCount: 0, likedByCurrentUser: false };
+const subscribeToDay = () => () => {};
+const getCurrentDay = () => Math.floor(Date.now() / 86_400_000);
+const getServerDay = () => 0;
 
 export default function Home() {
   const [category, setCategory] = useState("All");
@@ -27,24 +29,15 @@ export default function Home() {
   const [commentBusy, setCommentBusy] = useState(false);
   const [interactionBusy, setInteractionBusy] = useState("");
   const [downloadingId, setDownloadingId] = useState<number | string | null>(null);
+  const dayNumber = useSyncExternalStore(subscribeToDay, getCurrentDay, getServerDay);
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
 
   useEffect(() => {
-    getApprovedSubmissions().then((items) => setCommunityPhotos(items.map((item) => ({
-      id: item.id,
-      title: item.title,
-      photographer: item.photographerName,
-      category: item.category,
-      src: item.publicVersion ? item.downloadUrl : `/api/preview?url=${encodeURIComponent(item.downloadUrl)}`,
-      height: "standard",
-      likes: 0,
-      watermarked: item.publicVersion,
-      sourceUrl: item.downloadUrl,
-      source: "community",
-      description: item.description,
-      publishedAt: item.reviewedAt,
-    })))).catch(() => {});
+    fetch("/api/gallery")
+      .then((response) => response.ok ? response.json() as Promise<Photo[]> : [])
+      .then(setCommunityPhotos)
+      .catch(() => {});
   }, []);
 
   const allPhotos = useMemo(() => [...communityPhotos, ...photos], [communityPhotos]);
@@ -67,11 +60,24 @@ export default function Home() {
   useEffect(() => {
     if (!selected) return;
     let active = true;
-    setComments([]);
     getPhotoComments(selected.id)
       .then((items) => { if (active) setComments(items); })
       .catch(() => {});
     return () => { active = false; };
+  }, [selected]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelected(null);
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
   }, [selected]);
 
   const filtered = useMemo(() => allPhotos.filter((photo) =>
@@ -85,9 +91,9 @@ export default function Home() {
       (a.likes + (stats[String(a.id)]?.likesCount ?? 0))
     );
     const best = ranked.slice(0, Math.min(5, ranked.length));
-    const dayNumber = Math.floor(Date.now() / 86_400_000);
-    return best[dayNumber % best.length] ?? photos[0];
-  }, [allPhotos, stats]);
+    const dailyIndex = dayNumber % best.length;
+    return best[dailyIndex] ?? photos[0];
+  }, [allPhotos, dayNumber, stats]);
 
   function notify(message: string) {
     setToast(message);
@@ -107,6 +113,11 @@ export default function Home() {
 
   function totalLikes(photo: Photo) {
     return photo.likes + photoStats(photo).likesCount;
+  }
+
+  function openPhoto(photo: Photo) {
+    setComments([]);
+    setSelected(photo);
   }
 
   async function toggleLike(photo: Photo) {
@@ -195,7 +206,10 @@ export default function Home() {
           <a href="/login">{user ? "My account" : "Sign in"}</a>
           <a href="https://www.wildsaura.com">WildSaura ↗</a>
         </nav>
-        <a className="upload-button" href="/submit">Share your work <span>↗</span></a>
+        <a className="upload-button" href="/submit">
+          <span className="upload-button-copy"><strong>Share your work</strong><small>Submit to LUMA</small></span>
+          <span className="upload-button-icon" aria-hidden="true">↗</span>
+        </a>
       </header>
 
       <section className="hero" id="discover">
@@ -205,7 +219,7 @@ export default function Home() {
             <h1>Images worth<br /><em>keeping.</em></h1>
           </div>
           <figure className="hero-feature">
-            <button onClick={() => setSelected(dailyHero)} aria-label={`Open today's featured photograph, ${dailyHero.title}`}>
+            <button type="button" onClick={() => openPhoto(dailyHero)} aria-label={`Open today's featured photograph, ${dailyHero.title}`}>
               <img src={dailyHero.src} alt={`${dailyHero.title}, photograph by ${dailyHero.photographer}`} />
             </button>
             <figcaption><span>Daily frame</span><strong>{dailyHero.title}</strong><small>by {dailyHero.photographer}</small></figcaption>
@@ -224,7 +238,7 @@ export default function Home() {
       <section className="gallery-section" id="collections">
         <div className="filter-row">
           <div className="categories" aria-label="Photo categories">
-            {categories.map((item) => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}
+            {categories.map((item) => <button type="button" key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}
           </div>
           <span className="result-count">{filtered.length.toString().padStart(2, "0")} photographs</span>
         </div>
@@ -233,20 +247,24 @@ export default function Home() {
           {filtered.map((photo, index) => {
             const currentStats = photoStats(photo);
             return <article className={`photo-card ${photo.height}`} key={photo.id}>
-              <button className="image-button" onClick={() => setSelected(photo)} aria-label={`Open ${photo.title}`}>
+              <button type="button" className="image-button" onClick={() => openPhoto(photo)} aria-label={`Open ${photo.title}`}>
                 <img src={photo.src} alt={`${photo.title}, photograph by ${photo.photographer}`} loading={index < 3 ? "eager" : "lazy"} />
               </button>
               <div className="photo-overlay">
                 <div><strong>{photo.title}</strong><span>by {photo.photographer}</span></div>
                 <div className="quick-actions">
-                  <button onClick={() => toggleLike(photo)} className={currentStats.likedByCurrentUser ? "liked" : ""} aria-label="Like photo">{currentStats.likedByCurrentUser ? "♥" : "♡"}</button>
-                  <button onClick={() => share(photo)} aria-label="Share photo">↗</button>
-                  <button onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-label="Download compressed copyright photo">{downloadingId === photo.id ? "…" : "↓"}</button>
+                  <button type="button" data-tooltip={currentStats.likedByCurrentUser ? "Unlike" : "Like"} onClick={() => toggleLike(photo)} className={currentStats.likedByCurrentUser ? "liked" : ""} aria-label={currentStats.likedByCurrentUser ? "Unlike photo" : "Like photo"}><span aria-hidden="true">{currentStats.likedByCurrentUser ? "♥" : "♡"}</span></button>
+                  <button type="button" data-tooltip="Share" onClick={() => share(photo)} aria-label="Share photo"><span aria-hidden="true">↗</span></button>
+                  <button type="button" data-tooltip="Download" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-label="Download compressed copyright photo"><span aria-hidden="true">{downloadingId === photo.id ? "…" : "↓"}</span></button>
                 </div>
               </div>
               <div className="mobile-meta">
-                <button className="mobile-title" onClick={() => setSelected(photo)}>{photo.title} · {photo.photographer}</button>
-                <div><button onClick={() => toggleLike(photo)}>{currentStats.likedByCurrentUser ? "♥" : "♡"} {totalLikes(photo)}</button><button onClick={() => share(photo)}>↗</button></div>
+                <button type="button" className="mobile-title" onClick={() => openPhoto(photo)}>{photo.title}<small>by {photo.photographer}</small></button>
+                <div className="mobile-actions">
+                  <button type="button" className={currentStats.likedByCurrentUser ? "liked" : ""} onClick={() => toggleLike(photo)} aria-label={currentStats.likedByCurrentUser ? "Unlike photo" : "Like photo"}><span aria-hidden="true">{currentStats.likedByCurrentUser ? "♥" : "♡"}</span><small>{totalLikes(photo)}</small></button>
+                  <button type="button" onClick={() => share(photo)} aria-label="Share photo"><span aria-hidden="true">↗</span></button>
+                  <button type="button" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-label="Download compressed copyright photo"><span aria-hidden="true">{downloadingId === photo.id ? "…" : "↓"}</span></button>
+                </div>
               </div>
             </article>;
           })}
@@ -266,18 +284,18 @@ export default function Home() {
       </footer>
 
       {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}>
-        <section className="lightbox" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" role="dialog">
-          <button className="close" onClick={() => setSelected(null)} aria-label="Close">×</button>
+        <section className="lightbox" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" aria-labelledby="lightbox-title" role="dialog">
+          <button type="button" className="close" onClick={() => setSelected(null)} aria-label="Close photograph">×</button>
           <div className="lightbox-image"><img src={selected.src} alt={selected.title} /><span>Compressed preview · © WildSaura</span></div>
           <aside>
             <span className="tag">{selected.category}</span>
-            <h2>{selected.title}</h2>
+            <h2 id="lightbox-title">{selected.title}</h2>
             <p>Photograph by <strong>{selected.photographer}</strong></p>
             <div className="detail-actions">
-              <button onClick={() => toggleLike(selected)}>{photoStats(selected).likedByCurrentUser ? "♥ Liked" : "♡ Like"} · {totalLikes(selected)}</button>
-              <button onClick={() => share(selected)}>Share ↗ · {photoStats(selected).sharesCount}</button>
-              <button onClick={() => download(selected)} disabled={downloadingId === selected.id}>{downloadingId === selected.id ? "Preparing download…" : "Download compressed ↓"}</button>
-              <a href="/premium">View/download original · Premium soon</a>
+              <button type="button" onClick={() => toggleLike(selected)}><span className="action-symbol" aria-hidden="true">{photoStats(selected).likedByCurrentUser ? "♥" : "♡"}</span><span><strong>{photoStats(selected).likedByCurrentUser ? "Liked" : "Like photograph"}</strong><small>{totalLikes(selected).toLocaleString()} community saves</small></span></button>
+              <button type="button" onClick={() => share(selected)}><span className="action-symbol" aria-hidden="true">↗</span><span><strong>Share photograph</strong><small>{photoStats(selected).sharesCount} recorded shares</small></span></button>
+              <button type="button" onClick={() => download(selected)} disabled={downloadingId === selected.id}><span className="action-symbol" aria-hidden="true">↓</span><span><strong>{downloadingId === selected.id ? "Preparing…" : "Download preview"}</strong><small>Compressed · copyright marked</small></span></button>
+              <a href="/premium"><span className="action-symbol" aria-hidden="true">✦</span><span><strong>Original quality</strong><small>Premium access · coming soon</small></span></a>
             </div>
             <div className="comments">
               <h3>Conversation <span>{comments.length}</span></h3>
@@ -292,7 +310,7 @@ export default function Home() {
         </section>
       </div>}
 
-      {toast && <div className="toast">{toast}</div>}
+      {toast && <div className="toast" role="status" aria-live="polite">{toast}</div>}
     </main>
   );
 }

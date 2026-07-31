@@ -40,9 +40,9 @@ export function PhotoActions(props: {
   }
 
   return <div className="photo-page-actions">
-    <button onClick={share}>Share ↗</button>
-    <button onClick={download} disabled={busy}>{busy ? "Preparing…" : "Download compressed ↓"}</button>
-    <a href="/premium">Original · Premium soon</a>
-    {message && <small>{message}</small>}
+    <button type="button" onClick={share}><span className="action-symbol" aria-hidden="true">↗</span><span><strong>Share photograph</strong><small>Clean link with photo preview</small></span></button>
+    <button type="button" onClick={download} disabled={busy}><span className="action-symbol" aria-hidden="true">↓</span><span><strong>{busy ? "Preparing download…" : "Download preview"}</strong><small>Compressed · copyright marked</small></span></button>
+    <a href="/premium"><span className="action-symbol" aria-hidden="true">✦</span><span><strong>Original quality</strong><small>Premium access · coming soon</small></span></a>
+    {message && <small role="status">{message}</small>}
   </div>;
 }
