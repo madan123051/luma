@@ -182,9 +182,17 @@ footer>div { font-size:12px; }
 .review-story { margin:30px 0; }
 .review-modal label { display:grid; gap:8px; font-size:10px; text-transform:uppercase; }
 .review-modal textarea { min-height:100px; resize:vertical; background:transparent; border:1px solid var(--line); padding:12px; }
-.review-actions { display:grid; gap:7px; margin-top:20px; }
-.review-actions button { padding:12px; border:1px solid var(--line); background:transparent; cursor:pointer; }
-.review-actions button:last-child { background:var(--ink); color:white; }
+  .review-actions { display:grid; gap:7px; margin-top:20px; }
+  .review-actions button { padding:12px; border:1px solid var(--line); background:transparent; cursor:pointer; }
+  .review-actions button:last-child { background:var(--ink); color:white; }
+  .submission-manage-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:0 0 28px; }
+  .submission-manage-actions button,.edit-form-actions button { min-height:42px; border:1px solid var(--line); background:transparent; cursor:pointer; }
+  .submission-manage-actions .danger { color:#8e211b; border-color:#cfaaa6; background:#fff8f7; }
+  .edit-submission-form { display:grid; gap:14px; margin-top:24px; }
+  .edit-submission-form input,.edit-submission-form select,.edit-submission-form textarea { width:100%; border:1px solid var(--line); background:transparent; padding:12px; font:inherit; text-transform:none; }
+  .edit-submission-form textarea { min-height:120px; }
+  .edit-form-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; }
+  .edit-form-actions button:last-child { background:var(--ink); color:white; }
 .access-denied { min-height:100vh; display:grid; place-content:center; text-align:center; padding:20px; }
 .access-denied h1 { font-size:52px; letter-spacing:-.05em; }
 .access-denied a { text-decoration:underline; }
