@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  collection, doc, getDocs, limit, query, serverTimestamp, setDoc,
+  collection, deleteDoc, doc, getDocs, limit, query, serverTimestamp, setDoc,
   updateDoc, where, type DocumentData, type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
@@ -140,4 +140,35 @@ export async function reviewSubmission(id: string, status: SubmissionStatus, adm
     reviewedAt: serverTimestamp(),
     reviewedBy: adminEmail,
   });
+}
+
+export async function updateSubmissionDetails(id: string, input: {
+  title: string;
+  category: string;
+  description: string;
+  photographerName: string;
+}) {
+  const title = input.title.trim().slice(0, 140);
+  const photographerName = input.photographerName.trim().slice(0, 100);
+  if (!title || !photographerName || !input.category.trim()) throw new Error("Required photo details are missing.");
+  await updateDoc(doc(db, "submissions", id), {
+    title,
+    slug: photoSlug({ title, photographer: photographerName }),
+    category: input.category.trim().slice(0, 50),
+    description: input.description.trim().slice(0, 1000),
+    photographerName,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteSubmission(item: Pick<Submission, "id" | "storagePath" | "previewPath">) {
+  const paths = [...new Set([item.storagePath, item.previewPath].filter(Boolean))];
+  await Promise.all(paths.map(async (path) => {
+    try {
+      await deleteObject(ref(storage, path));
+    } catch (error) {
+      if ((error as { code?: string }).code !== "storage/object-not-found") throw error;
+    }
+  }));
+  await deleteDoc(doc(db, "submissions", item.id));
 }
