@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { photoPath, photos, type Photo } from "@/lib/gallery-data";
+import { photoPath, type Photo } from "@/lib/gallery-data";
 import { downloadPublicPhoto } from "@/lib/image-processing";
 import {
   addPhotoComment, getPhotoComments, getPhotoStats, recordSavedShare,
@@ -40,7 +40,11 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  const allPhotos = useMemo(() => [...communityPhotos, ...photos], [communityPhotos]);
+  const allPhotos = useMemo(() => [...communityPhotos].sort((a, b) => {
+    const newest = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+    const oldest = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+    return newest - oldest;
+  }), [communityPhotos]);
 
   useEffect(() => {
     const photoId = new URLSearchParams(window.location.search).get("photo");
@@ -91,8 +95,9 @@ export default function Home() {
       (a.likes + (stats[String(a.id)]?.likesCount ?? 0))
     );
     const best = ranked.slice(0, Math.min(5, ranked.length));
+    if (!best.length) return null;
     const dailyIndex = dayNumber % best.length;
-    return best[dailyIndex] ?? photos[0];
+    return best[dailyIndex];
   }, [allPhotos, dayNumber, stats]);
 
   function notify(message: string) {
@@ -218,12 +223,12 @@ export default function Home() {
             <p className="eyebrow">Independent photography. Curated daily.</p>
             <h1>Images worth<br /><em>keeping.</em></h1>
           </div>
-          <figure className="hero-feature">
+          {dailyHero && <figure className="hero-feature">
             <button type="button" onClick={() => openPhoto(dailyHero)} aria-label={`Open today's featured photograph, ${dailyHero.title}`}>
               <img src={dailyHero.src} alt={`${dailyHero.title}, photograph by ${dailyHero.photographer}`} />
             </button>
             <figcaption><span>Daily frame</span><strong>{dailyHero.title}</strong><small>by {dailyHero.photographer}</small></figcaption>
-          </figure>
+          </figure>}
         </div>
         <div className="hero-bottom">
           <p>Discover remarkable images from photographers everywhere. Free to explore, easy to share, ready to download.</p>

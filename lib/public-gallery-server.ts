@@ -1,5 +1,4 @@
-import { unstable_cache } from "next/cache";
-import { photoSlug, photos, type Photo } from "./gallery-data";
+import { photoSlug, type Photo } from "./gallery-data";
 
 type FirestoreValue = {
   stringValue?: string;
@@ -42,7 +41,7 @@ async function fetchApprovedPhotos(): Promise<Photo[]> {
         limit: 100,
       },
     }),
-    next: { revalidate: 300 },
+    cache: "no-store",
   });
   if (!response.ok) return [];
   const rows = await response.json() as Array<{ document?: FirestoreDocument }>;
@@ -68,18 +67,18 @@ async function fetchApprovedPhotos(): Promise<Photo[]> {
       likes: integerField(fields, "likesCount"),
       watermarked: publicVersion,
       source: "community",
-      publishedAt: fields.reviewedAt?.timestampValue ? new Date(fields.reviewedAt.timestampValue) : null,
+      publishedAt: fields.createdAt?.timestampValue ?? fields.reviewedAt?.timestampValue ?? null,
     } satisfies Photo];
+  }).sort((a, b) => {
+    const newest = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+    const oldest = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+    return newest - oldest;
   });
 }
 
-export const getApprovedGalleryPhotos = unstable_cache(
-  fetchApprovedPhotos,
-  ["luma-approved-gallery-photos"],
-  { revalidate: 300 },
-);
+export const getApprovedGalleryPhotos = fetchApprovedPhotos;
 
 export async function getPhotoBySlug(slug: string) {
   const communityPhotos = await getApprovedGalleryPhotos();
-  return [...communityPhotos, ...photos].find((photo) => photoSlug(photo) === slug) ?? null;
+  return communityPhotos.find((photo) => photoSlug(photo) === slug) ?? null;
 }
