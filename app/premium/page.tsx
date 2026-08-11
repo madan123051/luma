@@ -13,7 +13,7 @@ export default function PremiumPage() {
     <section>
       <span className="legal-kicker">LUMA Premium</span>
       <h1>Originals,<br/><em>coming soon.</em></h1>
-      <p>Public downloads remain compressed and carry a small WildSaura copyright mark. Premium will unlock full-resolution viewing and original-file downloads with clear creator licensing.</p>
+      <p>Free Standard downloads are compressed to a practical size and carry a slim white title and WildSaura copyright banner. Premium will unlock full-resolution viewing and original-file downloads with clear creator licensing.</p>
       <div className="premium-points"><span>Full resolution</span><span>Original files</span><span>Creator licensing</span></div>
       <Link className="premium-back" href="/">← Continue exploring</Link>
     </section>

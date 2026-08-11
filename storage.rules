@@ -16,23 +16,51 @@ service firebase.storage {
 
     match /submissions/{userId}/{submissionId}/{fileName} {
       allow create: if signedIn()
-        && request.auth.uid == userId
-        && fileName in ['original', 'preview.jpg']
+        && (
+          (
+            request.auth.uid == userId
+            && fileName in ['original', 'preview.jpg']
+          )
+          || (
+            isAdmin()
+            && fileName == 'standard.jpg'
+            && (
+              request.auth.uid == userId
+              || firestore.get(/databases/(default)/documents/submissions/$(submissionId)).data.submitterUid == userId
+            )
+          )
+        )
+        && fileName in ['original', 'preview.jpg', 'standard.jpg']
         && (
           (fileName == 'original' && request.resource.size <= 50 * 1024 * 1024)
           || (fileName == 'preview.jpg' && request.resource.size <= 4 * 1024 * 1024)
+          || (fileName == 'standard.jpg' && request.resource.size <= 10 * 1024 * 1024)
         )
-        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+        && (
+          (fileName == 'original' && request.resource.contentType.matches('image/(jpeg|png|webp)'))
+          || (fileName in ['preview.jpg', 'standard.jpg'] && request.resource.contentType == 'image/jpeg')
+        );
 
       allow read: if isAdmin()
         || (signedIn() && request.auth.uid == userId)
         || (
-          fileName == 'preview.jpg'
+          fileName in ['preview.jpg', 'standard.jpg']
           && firestore.get(/databases/(default)/documents/submissions/$(submissionId)).data.status == 'approved'
         );
 
-      allow delete: if isAdmin() || (signedIn() && request.auth.uid == userId);
-      allow update: if false;
+      allow delete: if isAdmin()
+        || (
+          signedIn()
+          && request.auth.uid == userId
+          && (
+            !firestore.exists(/databases/(default)/documents/submissions/$(submissionId))
+            || firestore.get(/databases/(default)/documents/submissions/$(submissionId)).data.status == 'pending'
+          )
+        );
+      allow update: if isAdmin()
+        && fileName == 'standard.jpg'
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType == 'image/jpeg';
     }
   }
 }
