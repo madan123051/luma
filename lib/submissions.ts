@@ -115,8 +115,12 @@ function uploadPromise(task: UploadTask, onChange: (bytesTransferred: number) =>
   });
 }
 
+function firebaseErrorCode(error: unknown) {
+  return typeof error === "object" && error && "code" in error ? String(error.code) : "";
+}
+
 export function submissionErrorMessage(error: unknown) {
-  const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+  const code = firebaseErrorCode(error);
   if (code === "storage/unauthorized" || code === "permission-denied") {
     return "Your account does not have permission to publish this photograph. Verify the signed-in email and try again.";
   }
@@ -335,16 +339,30 @@ export async function createStandardDownloadForSubmission(
   report(22, "preparing", "Building the Standard white-banner download…");
   await waitForPaint();
   const standardPhoto = await createStandardPhoto(original, item.title, item.photographerName, canonicalPhotoUrl);
-  report(35, "uploading", "Uploading the Standard file…");
-  const task = uploadBytesResumable(standardRef, standardPhoto, {
+  const metadata: UploadMetadata = {
     contentType: "image/jpeg",
     contentDisposition: `attachment; filename="${safeDownloadFilename(item.title)}-standard-wildsaura.jpg"`,
     customMetadata: { version: STANDARD_ASSET_VERSION, photoUrl: canonicalPhotoUrl },
-  });
-  await uploadPromise(task, (bytesTransferred) => {
-    report(35 + (bytesTransferred / Math.max(1, standardPhoto.size)) * 55, "uploading", "Uploading the Standard file…");
-  });
-  report(93, "saving", "Saving the Standard download link…");
+  };
+  const uploadStandard = async (fromPercent: number, toPercent: number, label: string) => {
+    const task = uploadBytesResumable(standardRef, standardPhoto, metadata);
+    await uploadPromise(task, (bytesTransferred) => {
+      const ratio = bytesTransferred / Math.max(1, standardPhoto.size);
+      report(fromPercent + ratio * (toPercent - fromPercent), "uploading", label);
+    });
+  };
+
+  report(35, "uploading", "Uploading the Standard file…");
+  try {
+    await uploadStandard(35, 90, "Uploading the Standard file…");
+  } catch (error) {
+    const replacingExisting = Boolean(item.standardPath || item.standardDownloadUrl);
+    if (firebaseErrorCode(error) !== "storage/unauthorized" || !replacingExisting) throw error;
+    report(91, "uploading", "Installing the refreshed Standard file…");
+    await deleteObject(standardRef);
+    await uploadStandard(91, 98, "Installing the refreshed Standard file…");
+  }
+  report(99, "saving", "Saving the Standard download link…");
   const standardDownloadUrl = await getDownloadURL(standardRef);
   await updateDoc(doc(db, "submissions", item.id), {
     standardPath,
