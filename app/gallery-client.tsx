@@ -267,7 +267,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
           <a href="https://www.wildsaura.com">WildSaura ↗</a>
         </nav>
         <a className="mobile-account-link" href="/login" aria-label={user ? "Open my account" : "Sign in"}>{user ? "Account" : "Sign in"}</a>
-        <a className="upload-button" href="/submit">
+        <a className="upload-button" href="/submit" aria-label="Share your work">
           <span className="upload-button-copy"><strong>Share your work</strong><small>Submit to LUMA</small></span>
           <span className="upload-button-icon" aria-hidden="true"><ImageUp size={25} strokeWidth={1.8} /></span>
         </a>
