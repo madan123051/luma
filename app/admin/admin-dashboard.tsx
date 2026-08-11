@@ -112,7 +112,7 @@ export function AdminDashboard() {
         ...details,
         photographerName: current?.displayName?.trim() || "WildSaura",
       });
-      load().catch(() => setItems([]));
+      current.getIdToken(true).then(load).catch(() => setItems([]));
     }
   }), []);
 
