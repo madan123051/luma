@@ -1,15 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import { onAuthStateChanged, sendEmailVerification, signOut, type User } from "firebase/auth";
 import { AuthPanel } from "@/components/auth-panel";
+import { UploadProgress } from "@/components/upload-progress";
 import { type AiPhotoMetadata, PHOTO_CATEGORIES } from "@/lib/ai-metadata";
 import { auth, isAdminEmail } from "@/lib/firebase";
 import { createAiPhotoDataUrl } from "@/lib/image-processing";
 import {
-  createSubmission, deleteSubmission, getAllSubmissions, reviewSubmission,
-  updateSubmissionDetails, type Submission, type SubmissionStatus,
+  createStandardDownloadForSubmission, createSubmission, deleteSubmission, getAllSubmissions, reviewSubmission, submissionErrorMessage,
+  updateSubmissionDetails, type Submission, type SubmissionProgress, type SubmissionStatus,
 } from "@/lib/submissions";
 
 type PhotoDetails = {
@@ -83,6 +84,12 @@ export function AdminDashboard() {
   const [aiContext, setAiContext] = useState("");
   const [aiApplied, setAiApplied] = useState(false);
   const [aiSearchAttributionHtml, setAiSearchAttributionHtml] = useState("");
+  const [uploadProgress, setUploadProgress] = useState<SubmissionProgress | null>(null);
+  const uploadInFlightRef = useRef(false);
+  const [standardProgress, setStandardProgress] = useState<SubmissionProgress | null>(null);
+  const [standardMessage, setStandardMessage] = useState("");
+  const [standardBusy, setStandardBusy] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState("");
 
   useEffect(() => () => {
     if (selectedPreviewUrl) URL.revokeObjectURL(selectedPreviewUrl);
@@ -95,7 +102,7 @@ export function AdminDashboard() {
   useEffect(() => onAuthStateChanged(auth, (current) => {
     setUser(current);
     setAuthReady(true);
-    if (isAdminEmail(current?.email)) {
+    if (isAdminEmail(current?.email) && current?.emailVerified) {
       setUploadDetails((details) => details.photographerName ? details : {
         ...details,
         photographerName: current?.displayName?.trim() || "WildSaura",
@@ -140,18 +147,32 @@ export function AdminDashboard() {
     setNote(item.adminNote);
     setEditing(false);
     setEditValues(detailValues(item));
+    setStandardProgress(null);
+    setStandardMessage("");
   }
 
   async function review(status: SubmissionStatus) {
     if (!selected || !user?.email) return;
     setBusy(true);
+    setStandardMessage("");
     try {
+      if (status === "approved" && (selected.status !== "approved" || !selected.standardDownloadUrl)) {
+        setStandardBusy(true);
+        setStandardProgress({ percent: 1, stage: "preparing", label: "Preparing Standard download before publishing…" });
+        const standard = await createStandardDownloadForSubmission(selected, setStandardProgress);
+        setSelected({ ...selected, ...standard });
+      }
       await reviewSubmission(selected.id, status, note, user.email);
       setSelected(null);
       setNote("");
       await load();
+    } catch (error) {
+      const message = submissionErrorMessage(error);
+      setStandardMessage(message);
+      setStandardProgress((progress) => ({ percent: progress?.percent ?? 0, stage: "error", label: "Publishing stopped" }));
     } finally {
       setBusy(false);
+      setStandardBusy(false);
     }
   }
 
@@ -160,14 +181,33 @@ export function AdminDashboard() {
     if (!selected) return;
     setBusy(true);
     try {
-      await updateSubmissionDetails(selected.id, {
+      const result = await updateSubmissionDetails(selected, {
         ...editValues,
         tags: listFromText(editValues.tags),
         keywords: listFromText(editValues.keywords),
       });
-      setSelected(null);
       setEditing(false);
-      await load();
+      if (result.standardInvalidated) {
+        setSelected({
+          ...selected,
+          ...editValues,
+          title: editValues.title.trim(),
+          photographerName: editValues.photographerName.trim(),
+          tags: listFromText(editValues.tags),
+          keywords: listFromText(editValues.keywords),
+          standardPath: "",
+          standardDownloadUrl: "",
+          standardFileSize: 0,
+        });
+        setStandardMessage("Metadata saved. Create Standard once to refresh its title and copyright banner.");
+        setStandardProgress(null);
+        void load().catch(() => {});
+      } else {
+        setSelected(null);
+        await load();
+      }
+    } catch (error) {
+      setStandardMessage(submissionErrorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -186,12 +226,33 @@ export function AdminDashboard() {
     }
   }
 
+  async function buildStandardDownload() {
+    if (!selected || standardBusy) return;
+    setStandardBusy(true);
+    setStandardMessage("");
+    setStandardProgress({ percent: 1, stage: "preparing", label: "Starting Standard download…" });
+    try {
+      const standard = await createStandardDownloadForSubmission(selected, setStandardProgress);
+      setSelected({ ...selected, ...standard });
+      setStandardMessage("Standard download is ready for visitors.");
+      void load().catch(() => {});
+    } catch (error) {
+      const message = submissionErrorMessage(error);
+      setStandardMessage(message);
+      setStandardProgress((progress) => ({ percent: progress?.percent ?? 0, stage: "error", label: "Standard preparation stopped" }));
+    } finally {
+      setStandardBusy(false);
+    }
+  }
+
   function choosePhoto(file: File | undefined) {
     setSelectedFile(file ?? null);
     setSelectedPreviewUrl(file ? URL.createObjectURL(file) : "");
     setAiMessage("");
     setAiApplied(false);
     setAiSearchAttributionHtml("");
+    setUploadProgress(null);
+    setUploadMessage("");
   }
 
   async function analyzePhoto() {
@@ -256,11 +317,14 @@ export function AdminDashboard() {
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (uploadInFlightRef.current) return;
     const form = event.currentTarget;
     if (!user?.email || !selectedFile) return setUploadMessage("Please select a photograph.");
     if (selectedFile.size > 50 * 1024 * 1024) return setUploadMessage("Image must be 50MB or smaller.");
+    uploadInFlightRef.current = true;
     setBusy(true);
     setUploadMessage("");
+    setUploadProgress({ percent: 1, stage: "preparing", label: "Starting secure upload…" });
     try {
       await createSubmission({
         file: selectedFile,
@@ -274,8 +338,9 @@ export function AdminDashboard() {
         seoTitle: uploadDetails.seoTitle,
         seoDescription: uploadDetails.seoDescription,
         aiGenerated: aiApplied,
-        user: { uid: user.uid, email: user.email },
+        user: { uid: user.uid, email: user.email, emailVerified: user.emailVerified },
         status: "approved",
+        onProgress: setUploadProgress,
       });
       form.reset();
       setSelectedFile(null);
@@ -286,17 +351,29 @@ export function AdminDashboard() {
       setAiMessage("");
       setAiSearchAttributionHtml("");
       setUploadMessage("Published successfully. The new photograph is live at the top of the gallery.");
-      await load();
-    } catch {
-      setUploadMessage("Upload failed. Please check the image and try again.");
+      void load().catch(() => setUploadMessage("Published successfully. Refresh the archive to see the new photograph."));
+    } catch (error) {
+      const message = submissionErrorMessage(error);
+      setUploadMessage(message);
+      setUploadProgress((progress) => ({ percent: progress?.percent ?? 0, stage: "error", label: "Upload stopped" }));
     } finally {
       setBusy(false);
+      uploadInFlightRef.current = false;
     }
   }
 
   if (!authReady) return <main className="auth-page"><p>Loading secure admin…</p></main>;
   if (!user) return <AuthPanel purpose="admin" />;
   if (!isAdminEmail(user.email)) return <main className="access-denied"><h1>Admin access required.</h1><p>Signed in as {user.email}. This address is not on the WildSaura admin allowlist.</p><button type="button" onClick={() => signOut(auth)}>Sign in with another account</button><Link href="/">Return to gallery</Link></main>;
+  if (!user.emailVerified) return <main className="access-denied"><h1>Verify the admin email.</h1><p>Firebase requires {user.email} to be verified before the private archive or publishing tools can open.</p><button type="button" onClick={async () => {
+    setVerificationMessage("");
+    try {
+      await sendEmailVerification(user);
+      setVerificationMessage("Verification email sent. Open it, then sign in again.");
+    } catch {
+      setVerificationMessage("Verification email could not be sent yet. Please wait a moment and retry.");
+    }
+  }}>Send verification email</button>{verificationMessage && <p role="status">{verificationMessage}</p>}<button type="button" onClick={() => signOut(auth)}>Sign in with another account</button><Link href="/">Return to gallery</Link></main>;
 
   return <main className="admin-page">
     <aside className="admin-sidebar">
@@ -345,7 +422,8 @@ export function AdminDashboard() {
           <div className="form-pair"><label>Search tags<input value={uploadDetails.tags} onChange={(event) => setUploadDetails({ ...uploadDetails, tags: event.target.value })} placeholder="wildlife, coastal light, japan" /></label><label>SEO phrases<input value={uploadDetails.keywords} onChange={(event) => setUploadDetails({ ...uploadDetails, keywords: event.target.value })} placeholder="natural phrases, comma separated" /></label></div>
           <label>Accessible image description<input value={uploadDetails.altText} onChange={(event) => setUploadDetails({ ...uploadDetails, altText: event.target.value })} maxLength={240} placeholder="Describe what is visibly present in the photograph" /></label>
           <div className="seo-fields"><span>Search preview</span><label>SEO title<input value={uploadDetails.seoTitle} onChange={(event) => setUploadDetails({ ...uploadDetails, seoTitle: event.target.value })} maxLength={70} /></label><label>SEO description<textarea value={uploadDetails.seoDescription} onChange={(event) => setUploadDetails({ ...uploadDetails, seoDescription: event.target.value })} maxLength={170} /></label></div>
-          <button type="submit" className="publish premium-publish" disabled={busy}>{busy ? "Publishing…" : "Review complete · publish ↗"}</button>
+          <button type="submit" className="publish premium-publish" disabled={busy}>{busy ? `Publishing · ${uploadProgress?.percent ?? 0}%` : "Review complete · publish ↗"}</button>
+          <UploadProgress progress={uploadProgress} />
           {uploadMessage && <p className="form-message" role="status">{uploadMessage}</p>}
         </form>
       </section> : <>
@@ -360,6 +438,6 @@ export function AdminDashboard() {
       </>}
     </section>
 
-    {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}><section className="review-modal" onMouseDown={(event) => event.stopPropagation()}><button type="button" className="close" onClick={() => setSelected(null)} aria-label="Close photo editor">×</button><div className="review-image"><img src={selected.downloadUrl} alt={selected.altText || selected.title} /></div><aside><span className="tag">{selected.category}</span>{editing ? <form className="edit-submission-form" onSubmit={saveDetails}><label>Photograph title<input required maxLength={140} value={editValues.title} onChange={(event) => setEditValues({ ...editValues, title: event.target.value })} /></label><label>Photographer name<input required maxLength={100} value={editValues.photographerName} onChange={(event) => setEditValues({ ...editValues, photographerName: event.target.value })} /></label><label>Category<select required value={editValues.category} onChange={(event) => setEditValues({ ...editValues, category: event.target.value })}>{PHOTO_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label><label>Description<textarea maxLength={1000} value={editValues.description} onChange={(event) => setEditValues({ ...editValues, description: event.target.value })} /></label><label>Tags<input value={editValues.tags} onChange={(event) => setEditValues({ ...editValues, tags: event.target.value })} /></label><label>SEO phrases<input value={editValues.keywords} onChange={(event) => setEditValues({ ...editValues, keywords: event.target.value })} /></label><label>Alt text<textarea maxLength={240} value={editValues.altText} onChange={(event) => setEditValues({ ...editValues, altText: event.target.value })} /></label><label>SEO title<input maxLength={70} value={editValues.seoTitle} onChange={(event) => setEditValues({ ...editValues, seoTitle: event.target.value })} /></label><label>SEO description<textarea maxLength={170} value={editValues.seoDescription} onChange={(event) => setEditValues({ ...editValues, seoDescription: event.target.value })} /></label><div className="edit-form-actions"><button type="button" onClick={() => setEditing(false)}>Cancel</button><button disabled={busy}>{busy ? "Saving…" : "Save changes"}</button></div></form> : <><h2>{selected.title}</h2><p>By <b>{selected.photographerName}</b><br />{selected.submitterEmail}</p><p className="review-story">{selected.description || "No description provided."}</p>{selected.tags.length > 0 && <div className="admin-tag-list">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}<div className="submission-manage-actions"><button type="button" onClick={() => setEditing(true)}>Edit metadata</button><button type="button" className="danger" disabled={busy} onClick={removePhoto}>{busy ? "Deleting…" : "Delete permanently"}</button></div><label>Private note<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional feedback for photographer" /></label><div className="review-actions"><button type="button" disabled={busy} onClick={() => review("rejected")}>Reject</button><button type="button" disabled={busy} onClick={() => review("pending")}>Keep pending</button><button type="button" disabled={busy} onClick={() => review("approved")}>Approve & publish ↗</button></div></>}</aside></section></div>}
+    {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}><section className="review-modal" onMouseDown={(event) => event.stopPropagation()}><button type="button" className="close" onClick={() => setSelected(null)} aria-label="Close photo editor">×</button><div className="review-image"><img src={selected.downloadUrl} alt={selected.altText || selected.title} /></div><aside><span className="tag">{selected.category}</span>{editing ? <form className="edit-submission-form" onSubmit={saveDetails}><label>Photograph title<input required maxLength={140} value={editValues.title} onChange={(event) => setEditValues({ ...editValues, title: event.target.value })} /></label><label>Photographer name<input required maxLength={100} value={editValues.photographerName} onChange={(event) => setEditValues({ ...editValues, photographerName: event.target.value })} /></label><label>Category<select required value={editValues.category} onChange={(event) => setEditValues({ ...editValues, category: event.target.value })}>{PHOTO_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label><label>Description<textarea maxLength={1000} value={editValues.description} onChange={(event) => setEditValues({ ...editValues, description: event.target.value })} /></label><label>Tags<input value={editValues.tags} onChange={(event) => setEditValues({ ...editValues, tags: event.target.value })} /></label><label>SEO phrases<input value={editValues.keywords} onChange={(event) => setEditValues({ ...editValues, keywords: event.target.value })} /></label><label>Alt text<textarea maxLength={240} value={editValues.altText} onChange={(event) => setEditValues({ ...editValues, altText: event.target.value })} /></label><label>SEO title<input maxLength={70} value={editValues.seoTitle} onChange={(event) => setEditValues({ ...editValues, seoTitle: event.target.value })} /></label><label>SEO description<textarea maxLength={170} value={editValues.seoDescription} onChange={(event) => setEditValues({ ...editValues, seoDescription: event.target.value })} /></label><div className="edit-form-actions"><button type="button" onClick={() => setEditing(false)}>Cancel</button><button disabled={busy}>{busy ? "Saving…" : "Save changes"}</button></div></form> : <><h2>{selected.title}</h2><p>By <b>{selected.photographerName}</b><br />{selected.submitterEmail}</p><p className="review-story">{selected.description || "No description provided."}</p>{selected.tags.length > 0 && <div className="admin-tag-list">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}<div className="submission-manage-actions"><button type="button" disabled={busy || standardBusy} onClick={() => setEditing(true)}>Edit metadata</button><button type="button" disabled={busy || standardBusy} onClick={buildStandardDownload}>{standardBusy ? `Standard ${standardProgress?.percent ?? 0}%` : selected.standardDownloadUrl ? "Refresh Standard" : "Create Standard"}</button><button type="button" className="danger" disabled={busy || standardBusy} onClick={removePhoto}>{busy ? "Deleting…" : "Delete permanently"}</button></div><UploadProgress progress={standardProgress} />{standardMessage && <p className="standard-message" role="status">{standardMessage}</p>}<label>Private note<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional feedback for photographer" /></label><div className="review-actions"><button type="button" disabled={busy || standardBusy} onClick={() => review("rejected")}>Reject</button><button type="button" disabled={busy || standardBusy} onClick={() => review("pending")}>Keep pending</button><button type="button" disabled={busy || standardBusy} onClick={() => review("approved")}>Approve & publish ↗</button></div></>}</aside></section></div>}
   </main>;
 }

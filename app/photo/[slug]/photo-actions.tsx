@@ -8,6 +8,8 @@ export function PhotoActions(props: {
   title: string;
   photographer: string;
   sourceUrl: string;
+  standardUrl?: string;
+  standardFileSize?: number;
   watermarked: boolean;
 }) {
   const [busy, setBusy] = useState(false);
@@ -31,8 +33,9 @@ export function PhotoActions(props: {
         title: props.title,
         photographer: props.photographer,
         alreadyWatermarked: props.watermarked,
+        standardUrl: props.standardUrl,
       });
-      setMessage("Download ready");
+      setMessage(props.standardUrl ? "Standard download started" : "Legacy preview download ready");
     } catch {
       setMessage("Download could not be prepared.");
     } finally {
@@ -47,7 +50,7 @@ export function PhotoActions(props: {
     </button>
     <button type="button" onClick={download} disabled={busy} aria-busy={busy}>
       <span className="action-symbol" aria-hidden="true">{busy ? <LoaderCircle className="is-spinning" size={20} strokeWidth={1.8} /> : <Download size={20} strokeWidth={1.8} />}</span>
-      <span><strong>{busy ? "Preparing download…" : "Download preview"}</strong><small>Compressed · copyright marked</small></span>
+      <span><strong>{busy ? "Preparing download…" : "Standard size"}</strong><small>{props.standardUrl ? `Free JPEG · ${props.standardFileSize ? `${(props.standardFileSize / (1024 * 1024)).toFixed(1)} MB` : "5–10 MB when source allows"}` : "Legacy free preview · under 4 MB"}</small></span>
     </button>
     <a href="/premium">
       <span className="action-symbol" aria-hidden="true"><Sparkles size={20} strokeWidth={1.8} /></span>

@@ -12,6 +12,8 @@ export type Photo = {
   slug?: string;
   src: string;
   sourceUrl?: string;
+  standardUrl?: string;
+  standardFileSize?: number;
   height: "tall" | "wide" | "standard";
   likes: number;
   watermarked?: boolean;

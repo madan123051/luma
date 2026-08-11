@@ -1,11 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { AuthPanel } from "@/components/auth-panel";
+import { UploadProgress } from "@/components/upload-progress";
 import { auth, isAdminEmail } from "@/lib/firebase";
-import { createSubmission, getMySubmissions, type Submission } from "@/lib/submissions";
+import {
+  createSubmission, getMySubmissions, submissionErrorMessage,
+  type Submission, type SubmissionProgress,
+} from "@/lib/submissions";
 
 export function SubmitStudio() {
   const [user, setUser] = useState<User | null>(null);
@@ -15,6 +19,8 @@ export function SubmitStudio() {
   const [busy, setBusy] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [selectedPreviewUrl, setSelectedPreviewUrl] = useState("");
+  const [uploadProgress, setUploadProgress] = useState<SubmissionProgress | null>(null);
+  const uploadInFlightRef = useRef(false);
 
   useEffect(() => () => {
     if (selectedPreviewUrl) URL.revokeObjectURL(selectedPreviewUrl);
@@ -35,13 +41,16 @@ export function SubmitStudio() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!user?.email) return;
+    if (uploadInFlightRef.current) return;
+    if (!user?.email) return setMessage("Sign in before uploading a photograph.");
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const file = form.get("photo");
-    if (!(file instanceof File)) return;
+    if (!(file instanceof File) || file.size === 0) return setMessage("Please select a photograph.");
     if (file.size > 50 * 1024 * 1024) return setMessage("Image must be 50MB or smaller.");
+    uploadInFlightRef.current = true;
     setBusy(true); setMessage("");
+    setUploadProgress({ percent: 1, stage: "preparing", label: "Starting secure upload…" });
     try {
       await createSubmission({
         file,
@@ -49,16 +58,22 @@ export function SubmitStudio() {
         category: String(form.get("category") ?? "").trim(),
         description: String(form.get("description") ?? "").trim(),
         photographerName: String(form.get("photographerName") ?? "").trim(),
-        user: { uid: user.uid, email: user.email },
+        user: { uid: user.uid, email: user.email, emailVerified: user.emailVerified },
+        onProgress: setUploadProgress,
       });
       formElement.reset();
       setSelectedFileName("");
       setSelectedPreviewUrl("");
       setMessage("Submitted successfully. Your photograph is private and waiting for admin review.");
-      await load(user);
-    } catch {
-      setMessage("Upload failed. Please check the image and try again.");
-    } finally { setBusy(false); }
+      void load(user).catch(() => setMessage("Submitted successfully. Refresh this page to see the new submission."));
+    } catch (error) {
+      const errorMessage = submissionErrorMessage(error);
+      setMessage(errorMessage);
+      setUploadProgress((progress) => ({ percent: progress?.percent ?? 0, stage: "error", label: "Upload stopped" }));
+    } finally {
+      setBusy(false);
+      uploadInFlightRef.current = false;
+    }
   }
 
   if (!authReady) return <main className="auth-page"><p>Loading secure sign-in…</p></main>;
@@ -74,6 +89,8 @@ export function SubmitStudio() {
             const file = event.target.files?.[0];
             setSelectedFileName(file?.name ?? "");
             setSelectedPreviewUrl(file ? URL.createObjectURL(file) : "");
+            setUploadProgress(null);
+            setMessage("");
           }} />
           {selectedPreviewUrl && <img className="selected-thumbnail" src={selectedPreviewUrl} alt="Selected photograph preview" />}
           <b>{selectedFileName ? "Photograph selected" : "Select your photograph"}</b>
@@ -83,8 +100,9 @@ export function SubmitStudio() {
         <label>Category<select name="category" required defaultValue=""><option value="" disabled>Choose one</option>{["Nature","People","Architecture","Travel","Street","Fashion","Food","Interiors","Wildlife","Birds","Landscapes"].map((c)=><option key={c}>{c}</option>)}</select></label>
         <label>Story or description<textarea name="description" maxLength={1000} placeholder="Tell us about the frame, location and moment…" /></label>
         <label className="consent"><input type="checkbox" required /> I created this photograph or have all necessary rights and permissions, and I agree to the <a href="/terms">Terms</a> and <a href="/license">Photo License</a>.</label>
-        <button className="publish" disabled={busy}>{busy ? "Uploading…" : "Send for review ↗"}</button>
-        {message && <p className="form-message">{message}</p>}
+        <button className="publish" disabled={busy}>{busy ? `Uploading · ${uploadProgress?.percent ?? 0}%` : "Send for review ↗"}</button>
+        <UploadProgress progress={uploadProgress} />
+        {message && <p className="form-message" role="status">{message}</p>}
       </form>
       <aside className="submission-list"><h2>Your submissions</h2>{items.length ? items.map((item)=><article key={item.id}><div><b>{item.title}</b><small>{item.createdAt?.toLocaleDateString() ?? "Just now"}</small></div><span className={`status ${item.status}`}>{item.status}</span>{item.adminNote && <p>Editor: {item.adminNote}</p>}</article>) : <p>No submissions yet.</p>}</aside>
     </div>

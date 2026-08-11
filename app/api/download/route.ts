@@ -1,4 +1,4 @@
-import { createPublicDownload, fetchRemoteImage } from "@/lib/server-images";
+import { createPublicDownload, fetchRemoteImage, isLumaStoredDerivative } from "@/lib/server-images";
 
 export const runtime = "nodejs";
 
@@ -12,11 +12,13 @@ export async function POST(request: Request) {
       url?: string;
       title?: string;
       photographer?: string;
-      alreadyWatermarked?: boolean;
     };
     if (!body.url) return Response.json({ error: "Missing image URL." }, { status: 400 });
+    if (!isLumaStoredDerivative(body.url, "preview.jpg")) {
+      return Response.json({ error: "Image source is not allowed." }, { status: 400 });
+    }
     const source = await fetchRemoteImage(body.url);
-    const download = await createPublicDownload(source, body.photographer ?? "Creator", body.alreadyWatermarked === true);
+    const download = await createPublicDownload(source, body.photographer ?? "Creator", true);
     return new Response(new Uint8Array(download), {
       headers: {
         "Content-Type": "image/jpeg",

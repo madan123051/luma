@@ -1,13 +1,16 @@
 "use client";
 
 import {
-  collection, deleteDoc, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc,
+  collection, deleteDoc, deleteField, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc,
   updateDoc, where, type DocumentData, type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import {
+  deleteObject, getBlob, getDownloadURL, ref, uploadBytesResumable,
+  type UploadMetadata, type UploadTask,
+} from "firebase/storage";
 import { db, storage } from "./firebase";
 import { photoSlug } from "./gallery-data";
-import { createPublicPhoto } from "./image-processing";
+import { createPublicPhoto, createStandardPhoto } from "./image-processing";
 
 export type SubmissionStatus = "pending" | "approved" | "rejected";
 
@@ -22,10 +25,13 @@ export type Submission = {
   submitterUid: string;
   storagePath: string;
   previewPath: string;
+  standardPath: string;
   downloadUrl: string;
+  standardDownloadUrl: string;
   contentType: string;
   fileSize: number;
   previewFileSize: number;
+  standardFileSize: number;
   publicVersion: boolean;
   status: SubmissionStatus;
   adminNote: string;
@@ -38,6 +44,12 @@ export type Submission = {
   seoTitle: string;
   seoDescription: string;
   aiGenerated: boolean;
+};
+
+export type SubmissionProgress = {
+  percent: number;
+  stage: "preparing" | "uploading" | "saving" | "complete" | "error";
+  label: string;
 };
 
 function fromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Submission {
@@ -55,10 +67,13 @@ function fromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Submission
     submitterUid: data.submitterUid ?? "",
     storagePath: data.storagePath ?? "",
     previewPath: data.previewPath ?? data.storagePath ?? "",
+    standardPath: data.standardPath ?? "",
     downloadUrl: data.downloadUrl ?? "",
+    standardDownloadUrl: data.standardDownloadUrl ?? "",
     contentType: data.contentType ?? "",
     fileSize: data.fileSize ?? 0,
     previewFileSize: data.previewFileSize ?? data.fileSize ?? 0,
+    standardFileSize: data.standardFileSize ?? 0,
     publicVersion: data.publicVersion === true,
     status: data.status ?? "pending",
     adminNote: data.adminNote ?? "",
@@ -74,34 +89,121 @@ function fromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Submission
   };
 }
 
+function waitForPaint() {
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    window.setTimeout(finish, 60);
+    window.requestAnimationFrame(finish);
+  });
+}
+
+function safeDownloadFilename(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 90) || "luma-photo";
+}
+
+function uploadPromise(task: UploadTask, onChange: (bytesTransferred: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    task.on("state_changed", (snapshot) => onChange(snapshot.bytesTransferred), reject, resolve);
+  });
+}
+
+export function submissionErrorMessage(error: unknown) {
+  const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+  if (code === "storage/unauthorized" || code === "permission-denied") {
+    return "Your account does not have permission to publish this photograph. Verify the signed-in email and try again.";
+  }
+  if (code === "storage/retry-limit-exceeded") {
+    return "The upload timed out. Check the connection and try again.";
+  }
+  if (code === "storage/quota-exceeded") {
+    return "Photo storage is temporarily full. Please contact WildSaura support.";
+  }
+  if (error instanceof Error && !code) return error.message;
+  return "Upload failed. Please check the image and try again.";
+}
+
 export async function createSubmission(input: {
   file: File; title: string; category: string; description: string;
-  photographerName: string; user: { uid: string; email: string };
+  photographerName: string; user: { uid: string; email: string; emailVerified?: boolean };
   status?: "pending" | "approved";
   tags?: string[]; keywords?: string[]; altText?: string;
   seoTitle?: string; seoDescription?: string; aiGenerated?: boolean;
+  onProgress?: (progress: SubmissionProgress) => void;
 }) {
+  if (input.status === "approved" && input.user.emailVerified === false) {
+    throw new Error("Verify this admin email before publishing, or sign in with its Google account.");
+  }
+
+  const report = (percent: number, stage: SubmissionProgress["stage"], label: string) => {
+    input.onProgress?.({ percent: Math.max(0, Math.min(100, Math.round(percent))), stage, label });
+  };
+  report(2, "preparing", "Reading the original photograph…");
+  await waitForPaint();
+
   const docRef = doc(collection(db, "submissions"));
   const storagePath = `submissions/${input.user.uid}/${docRef.id}/original`;
   const previewPath = `submissions/${input.user.uid}/${docRef.id}/preview.jpg`;
+  const standardPath = `submissions/${input.user.uid}/${docRef.id}/standard.jpg`;
   const objectRef = ref(storage, storagePath);
   const previewRef = ref(storage, previewPath);
+  const standardRef = ref(storage, standardPath);
+  const status = input.status ?? "pending";
+  report(5, "preparing", "Preparing the fast gallery preview…");
   const publicPhoto = await createPublicPhoto(input.file, input.photographerName);
+  let standardPhoto: Blob | null = null;
+  if (status === "approved") {
+    report(9, "preparing", "Building the Standard white-banner download…");
+    await waitForPaint();
+    standardPhoto = await createStandardPhoto(input.file, input.title, input.photographerName);
+  }
 
   try {
-    await Promise.all([
-      uploadBytes(objectRef, input.file, {
+    report(15, "uploading", standardPhoto ? "Uploading original, preview and Standard files…" : "Uploading original and preview files…");
+    const uploadDefinitions: Array<{ data: Blob; metadata: UploadMetadata }> = [
+      { data: input.file, metadata: {
         contentType: input.file.type,
         customMetadata: { originalName: input.file.name.slice(0, 180) },
-      }),
-      uploadBytes(previewRef, publicPhoto, {
+      } },
+      { data: publicPhoto, metadata: {
         contentType: "image/jpeg",
         customMetadata: { version: "public-watermarked" },
-      }),
-    ]);
+      } },
+    ];
+    const refs = [objectRef, previewRef];
+    if (standardPhoto) {
+      uploadDefinitions.push({ data: standardPhoto, metadata: {
+        contentType: "image/jpeg",
+        contentDisposition: `attachment; filename="${safeDownloadFilename(input.title)}-standard-wildsaura.jpg"`,
+        customMetadata: { version: "standard-free-white-banner" },
+      } });
+      refs.push(standardRef);
+    }
+    const transferred = uploadDefinitions.map(() => 0);
+    const totalBytes = uploadDefinitions.reduce((total, item) => total + item.data.size, 0);
+    const tasks = uploadDefinitions.map((item, index) => uploadBytesResumable(refs[index], item.data, item.metadata));
+    const promises = tasks.map((task, index) => uploadPromise(task, (bytesTransferred) => {
+      transferred[index] = bytesTransferred;
+      const uploadedBytes = transferred.reduce((total, value) => total + value, 0);
+      report(15 + (uploadedBytes / Math.max(1, totalBytes)) * 77, "uploading", "Uploading photo files…");
+    }));
+    try {
+      await Promise.all(promises);
+    } catch (error) {
+      tasks.forEach((task) => task.cancel());
+      await Promise.allSettled(promises);
+      throw error;
+    }
+
+    report(94, "saving", "Securing download links…");
     const downloadUrl = await getDownloadURL(previewRef);
-    const status = input.status ?? "pending";
-    await setDoc(docRef, {
+    const standardDownloadUrl = standardPhoto ? await getDownloadURL(standardRef) : "";
+    report(97, "saving", status === "approved" ? "Publishing gallery details…" : "Sending details for review…");
+    const submissionData: Record<string, unknown> = {
       title: input.title.slice(0, 140),
       slug: photoSlug({ title: input.title, photographer: input.photographerName }),
       category: input.category.slice(0, 50),
@@ -127,12 +229,20 @@ export async function createSubmission(input: {
       seoTitle: input.seoTitle?.trim().slice(0, 70) ?? "",
       seoDescription: input.seoDescription?.trim().slice(0, 170) ?? "",
       aiGenerated: input.aiGenerated === true,
-    });
+    };
+    if (standardPhoto) {
+      submissionData.standardPath = standardPath;
+      submissionData.standardDownloadUrl = standardDownloadUrl;
+      submissionData.standardFileSize = standardPhoto.size;
+    }
+    await setDoc(docRef, submissionData);
+    report(100, "complete", status === "approved" ? "Published successfully" : "Sent for review");
     return docRef.id;
   } catch (error) {
     await Promise.all([
       deleteObject(objectRef).catch(() => {}),
       deleteObject(previewRef).catch(() => {}),
+      deleteObject(standardRef).catch(() => {}),
     ]);
     throw error;
   }
@@ -162,7 +272,7 @@ export async function reviewSubmission(id: string, status: SubmissionStatus, adm
   });
 }
 
-export async function updateSubmissionDetails(id: string, input: {
+export async function updateSubmissionDetails(item: Pick<Submission, "id" | "title" | "photographerName" | "standardPath">, input: {
   title: string;
   category: string;
   description: string;
@@ -176,7 +286,10 @@ export async function updateSubmissionDetails(id: string, input: {
   const title = input.title.trim().slice(0, 140);
   const photographerName = input.photographerName.trim().slice(0, 100);
   if (!title || !photographerName || !input.category.trim()) throw new Error("Required photo details are missing.");
-  await updateDoc(doc(db, "submissions", id), {
+  const standardInvalidated = Boolean(
+    item.standardPath && (title !== item.title || photographerName !== item.photographerName),
+  );
+  const updates: Record<string, unknown> = {
     title,
     category: input.category.trim().slice(0, 50),
     description: input.description.trim().slice(0, 1000),
@@ -187,11 +300,57 @@ export async function updateSubmissionDetails(id: string, input: {
     seoTitle: input.seoTitle?.trim().slice(0, 70) ?? "",
     seoDescription: input.seoDescription?.trim().slice(0, 170) ?? "",
     updatedAt: serverTimestamp(),
-  });
+  };
+  if (standardInvalidated) {
+    updates.standardPath = deleteField();
+    updates.standardDownloadUrl = deleteField();
+    updates.standardFileSize = deleteField();
+  }
+  await updateDoc(doc(db, "submissions", item.id), updates);
+  if (standardInvalidated) await deleteObject(ref(storage, item.standardPath)).catch(() => {});
+  return { standardInvalidated };
 }
 
-export async function deleteSubmission(item: Pick<Submission, "id" | "storagePath" | "previewPath">) {
-  const paths = [...new Set([item.storagePath, item.previewPath].filter(Boolean))];
+export async function createStandardDownloadForSubmission(
+  item: Submission,
+  onProgress?: (progress: SubmissionProgress) => void,
+) {
+  if (!item.storagePath || !item.submitterUid) throw new Error("The private original is not available for this photograph.");
+  const report = (percent: number, stage: SubmissionProgress["stage"], label: string) => {
+    onProgress?.({ percent: Math.max(0, Math.min(100, Math.round(percent))), stage, label });
+  };
+  const standardPath = item.standardPath || `submissions/${item.submitterUid}/${item.id}/standard.jpg`;
+  const standardRef = ref(storage, standardPath);
+
+  report(3, "preparing", "Loading the private original…");
+  await waitForPaint();
+  const original = await getBlob(ref(storage, item.storagePath), 50 * 1024 * 1024);
+  report(22, "preparing", "Building the Standard white-banner download…");
+  await waitForPaint();
+  const standardPhoto = await createStandardPhoto(original, item.title, item.photographerName);
+  report(35, "uploading", "Uploading the Standard file…");
+  const task = uploadBytesResumable(standardRef, standardPhoto, {
+    contentType: "image/jpeg",
+    contentDisposition: `attachment; filename="${safeDownloadFilename(item.title)}-standard-wildsaura.jpg"`,
+    customMetadata: { version: "standard-free-white-banner" },
+  });
+  await uploadPromise(task, (bytesTransferred) => {
+    report(35 + (bytesTransferred / Math.max(1, standardPhoto.size)) * 55, "uploading", "Uploading the Standard file…");
+  });
+  report(93, "saving", "Saving the Standard download link…");
+  const standardDownloadUrl = await getDownloadURL(standardRef);
+  await updateDoc(doc(db, "submissions", item.id), {
+    standardPath,
+    standardDownloadUrl,
+    standardFileSize: standardPhoto.size,
+    updatedAt: serverTimestamp(),
+  });
+  report(100, "complete", "Standard download is ready");
+  return { standardPath, standardDownloadUrl, standardFileSize: standardPhoto.size };
+}
+
+export async function deleteSubmission(item: Pick<Submission, "id" | "storagePath" | "previewPath" | "standardPath">) {
+  const paths = [...new Set([item.storagePath, item.previewPath, item.standardPath].filter(Boolean))];
   await Promise.all(paths.map(async (path) => {
     try {
       await deleteObject(ref(storage, path));

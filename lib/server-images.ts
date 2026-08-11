@@ -3,18 +3,38 @@ import sharp from "sharp";
 const MAX_SOURCE_BYTES = 55 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024;
 const MAX_SOCIAL_BYTES = 280 * 1024;
-const allowedHosts = new Set([
-  "images.unsplash.com",
-  "firebasestorage.googleapis.com",
-  "storage.googleapis.com",
-]);
+const allowedHosts = new Set(["firebasestorage.googleapis.com", "storage.googleapis.com"]);
 
-function assertAllowedUrl(value: string) {
+function lumaStorageObject(value: string) {
   const url = new URL(value);
   if (url.protocol !== "https:" || !allowedHosts.has(url.hostname)) {
     throw new Error("Image source is not allowed.");
   }
-  return url;
+  const expectedBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim();
+  if (!expectedBucket) throw new Error("Image storage is not configured.");
+  const decodedPath = decodeURIComponent(url.pathname);
+  let objectPath = "";
+
+  if (url.hostname === "firebasestorage.googleapis.com") {
+    const match = /^\/v0\/b\/([^/]+)\/o\/(.+)$/.exec(decodedPath);
+    if (!match || match[1] !== expectedBucket) throw new Error("Image source is not allowed.");
+    objectPath = match[2];
+  } else {
+    const path = decodedPath.replace(/^\//, "");
+    if (!path.startsWith(`${expectedBucket}/`)) throw new Error("Image source is not allowed.");
+    objectPath = path.slice(expectedBucket.length + 1);
+  }
+  const match = /^submissions\/[^/]+\/[^/]+\/(preview\.jpg|standard\.jpg)$/.exec(objectPath);
+  if (!match) throw new Error("Image source is not allowed.");
+  return { url, filename: match[1] as "preview.jpg" | "standard.jpg" };
+}
+
+export function isLumaStoredDerivative(value: string, filename: "preview.jpg" | "standard.jpg") {
+  try {
+    return lumaStorageObject(value).filename === filename;
+  } catch {
+    return false;
+  }
 }
 
 function escapeXml(value: string) {
@@ -28,14 +48,14 @@ function escapeXml(value: string) {
 }
 
 export async function fetchRemoteImage(value: string) {
-  const sourceUrl = assertAllowedUrl(value);
+  const sourceUrl = lumaStorageObject(value).url;
   const response = await fetch(sourceUrl, {
     cache: "force-cache",
     signal: AbortSignal.timeout(20_000),
     headers: { "User-Agent": "LUMA-WildSaura-Image-Service/1.0" },
   });
   if (!response.ok) throw new Error(`Image source returned ${response.status}.`);
-  assertAllowedUrl(response.url);
+  lumaStorageObject(response.url);
   const declaredSize = Number(response.headers.get("content-length") ?? 0);
   if (declaredSize > MAX_SOURCE_BYTES) throw new Error("Image source is too large.");
   const source = Buffer.from(await response.arrayBuffer());

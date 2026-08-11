@@ -84,6 +84,8 @@ export default async function PhotoPage({ params }: { params: Promise<{ slug: st
           title={photo.title}
           photographer={photo.photographer}
           sourceUrl={photo.sourceUrl ?? photo.src}
+          standardUrl={photo.standardUrl}
+          standardFileSize={photo.standardFileSize}
           watermarked={photo.watermarked === true}
         />
         <div className="photo-page-meta"><span>Independent photography</span><span>Curated by WildSaura</span><span>Licensed preview</span>{(photo.tags ?? []).slice(0, 4).map((tag) => <span key={tag}>{tag}</span>)}</div>

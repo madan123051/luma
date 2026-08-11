@@ -23,7 +23,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'title', 'slug', 'category', 'description', 'photographerName',
           'submitterEmail', 'submitterUid', 'storagePath', 'previewPath',
-          'downloadUrl', 'contentType', 'fileSize', 'previewFileSize',
+          'standardPath', 'downloadUrl', 'standardDownloadUrl',
+          'contentType', 'fileSize', 'previewFileSize', 'standardFileSize',
           'publicVersion', 'status', 'adminNote', 'createdAt', 'reviewedAt',
           'reviewedBy', 'tags', 'keywords', 'altText', 'seoTitle',
           'seoDescription', 'aiGenerated'
@@ -63,6 +64,23 @@ service cloud.firestore {
         && request.resource.data.previewPath == 'submissions/' + request.auth.uid + '/' + submissionId + '/preview.jpg'
         && request.resource.data.fileSize <= 50 * 1024 * 1024
         && request.resource.data.previewFileSize <= 4 * 1024 * 1024
+        && (
+          !request.resource.data.keys().hasAny([
+            'standardPath', 'standardDownloadUrl', 'standardFileSize'
+          ])
+          || (
+            isAdmin()
+            && request.resource.data.keys().hasAll([
+              'standardPath', 'standardDownloadUrl', 'standardFileSize'
+            ])
+            && request.resource.data.standardPath == 'submissions/' + request.auth.uid + '/' + submissionId + '/standard.jpg'
+            && request.resource.data.standardDownloadUrl is string
+            && request.resource.data.standardDownloadUrl.size() > 0
+            && request.resource.data.standardDownloadUrl.size() <= 2048
+            && request.resource.data.standardFileSize > 0
+            && request.resource.data.standardFileSize <= 10 * 1024 * 1024
+          )
+        )
         && request.resource.data.publicVersion == true;
 
       allow update: if isAdmin();

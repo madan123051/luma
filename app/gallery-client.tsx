@@ -141,6 +141,12 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
     return photo.likes + photoStats(photo).likesCount;
   }
 
+  function standardSizeLabel(photo: Photo) {
+    if (!photo.standardUrl) return "Legacy free preview · under 4 MB";
+    if (!photo.standardFileSize) return "Free JPEG · 5–10 MB when source allows";
+    return `Free JPEG · ${(photo.standardFileSize / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   function openPhoto(photo: Photo) {
     setComments([]);
     setSelected(photo);
@@ -195,8 +201,9 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
         title: photo.title,
         photographer: photo.photographer,
         alreadyWatermarked: photo.watermarked,
+        standardUrl: photo.standardUrl,
       });
-      notify("Compressed copyright download ready");
+      notify(photo.standardUrl ? "Standard download started" : "Legacy preview download ready");
     } catch {
       notify("Download could not be prepared. Please try again.");
     } finally {
@@ -290,7 +297,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
                   <button type="button" data-tooltip="Share" onClick={() => share(photo)} aria-label="Share photo">
                     <Share2 className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />
                   </button>
-                  <button type="button" data-tooltip="Download" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-busy={downloadingId === photo.id} aria-label="Download compressed copyright photo">
+                  <button type="button" data-tooltip="Standard size" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-busy={downloadingId === photo.id} aria-label="Download Standard size copyright photo">
                     {downloadingId === photo.id
                       ? <LoaderCircle className="interaction-icon is-spinning" size={18} strokeWidth={1.8} aria-hidden="true" />
                       : <Download className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />}
@@ -307,7 +314,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
                   <button type="button" onClick={() => share(photo)} aria-label="Share photo">
                     <Share2 className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />
                   </button>
-                  <button type="button" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-busy={downloadingId === photo.id} aria-label="Download compressed copyright photo">
+                  <button type="button" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-busy={downloadingId === photo.id} aria-label="Download Standard size copyright photo">
                     {downloadingId === photo.id
                       ? <LoaderCircle className="interaction-icon is-spinning" size={18} strokeWidth={1.8} aria-hidden="true" />
                       : <Download className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />}
@@ -352,7 +359,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
               </button>
               <button type="button" onClick={() => download(selected)} disabled={downloadingId === selected.id} aria-busy={downloadingId === selected.id}>
                 <span className="action-symbol" aria-hidden="true">{downloadingId === selected.id ? <LoaderCircle className="is-spinning" size={20} strokeWidth={1.8} /> : <Download size={20} strokeWidth={1.8} />}</span>
-                <span><strong>{downloadingId === selected.id ? "Preparing…" : "Download preview"}</strong><small>Compressed · copyright marked</small></span>
+                <span><strong>{downloadingId === selected.id ? "Preparing…" : "Standard size"}</strong><small>{standardSizeLabel(selected)}</small></span>
               </button>
               <a href="/premium">
                 <span className="action-symbol" aria-hidden="true"><Sparkles size={20} strokeWidth={1.8} /></span>

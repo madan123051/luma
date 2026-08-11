@@ -149,6 +149,20 @@ footer>div { font-size:12px; }
 .upload-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .upload-fields>* { border:1px solid var(--line); background:transparent; padding:13px; min-width:0; }
 .publish { width:100%; padding:15px; margin-top:16px; border:0; background:var(--ink); color:white; cursor:pointer; }
+.publish:disabled { cursor:wait; opacity:.72; }
+.upload-progress { display:grid; gap:9px; padding:14px 15px; border:1px solid #cbc8bd; border-radius:12px; background:#f2f0e7; }
+.upload-progress>div { display:flex; align-items:center; justify-content:space-between; gap:18px; color:#5e5c55; font-size:10px; line-height:1.35; }
+.upload-progress strong { color:var(--ink); font-size:12px; font-variant-numeric:tabular-nums; }
+.upload-progress progress { width:100%; height:7px; border:0; border-radius:999px; overflow:hidden; background:#d9d6ca; accent-color:var(--ink); }
+.upload-progress progress::-webkit-progress-bar { background:#d9d6ca; border-radius:999px; }
+.upload-progress progress::-webkit-progress-value { background:var(--ink); border-radius:999px; transition:width .22s ease; }
+.upload-progress progress::-moz-progress-bar { background:var(--ink); border-radius:999px; }
+.upload-progress.complete { border-color:#a8c900; background:#f0f8c8; }
+.upload-progress.complete progress::-webkit-progress-value { background:#668900; }
+.upload-progress.complete progress::-moz-progress-bar { background:#668900; }
+.upload-progress.error { border-color:#d4aaa5; background:#fff2f0; }
+.upload-progress.error progress::-webkit-progress-value { background:#a23931; }
+.upload-progress.error progress::-moz-progress-bar { background:#a23931; }
 .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--accent); color:var(--ink); padding:12px 18px; z-index:80; font-size:12px; box-shadow:0 8px 30px #0003; }
 .studio-page { min-height:100vh; background:var(--paper); }
 .studio-header { height:76px; display:flex; align-items:center; justify-content:space-between; padding:0 4vw; border-bottom:1px solid var(--line); }
@@ -256,9 +270,11 @@ footer>div { font-size:12px; }
   .review-actions { display:grid; gap:7px; margin-top:20px; }
   .review-actions button { padding:12px; border:1px solid var(--line); background:transparent; cursor:pointer; }
   .review-actions button:last-child { background:var(--ink); color:white; }
-  .submission-manage-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:0 0 28px; }
+  .submission-manage-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:0 0 18px; }
   .submission-manage-actions button,.edit-form-actions button { min-height:42px; border:1px solid var(--line); background:transparent; cursor:pointer; }
   .submission-manage-actions .danger { color:#8e211b; border-color:#cfaaa6; background:#fff8f7; }
+  .submission-manage-actions .danger:last-child { grid-column:1/-1; }
+  .standard-message { margin:10px 0 22px; color:#496413; font-size:11px!important; }
   .edit-submission-form { display:grid; gap:14px; margin-top:24px; }
   .edit-submission-form input,.edit-submission-form select,.edit-submission-form textarea { width:100%; border:1px solid var(--line); background:transparent; padding:12px; font:inherit; text-transform:none; }
   .edit-submission-form textarea { min-height:120px; }
