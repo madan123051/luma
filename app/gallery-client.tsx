@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { Clock3, Download, Heart, LoaderCircle, Share2, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock3, Download, Heart, ImageUp, LoaderCircle, Share2, Sparkles } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { photoPath, type Photo } from "@/lib/gallery-data";
 import { PHOTO_CATEGORIES } from "@/lib/ai-metadata";
@@ -15,6 +15,7 @@ import {
 
 const categories = ["All", ...PHOTO_CATEGORIES];
 const emptyStats: PhotoStats = { likesCount: 0, sharesCount: 0, likedByCurrentUser: false };
+const INITIAL_GALLERY_SIZE = 6;
 const subscribeToDay = () => () => {};
 const getCurrentDay = () => Math.floor(Date.now() / 86_400_000);
 const getServerDay = () => 0;
@@ -22,6 +23,7 @@ const getServerDay = () => 0;
 export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
   const [category, setCategory] = useState("All");
   const [query, setQuery] = useState("");
+  const [showAllPhotos, setShowAllPhotos] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
   const [communityPhotos] = useState<Photo[]>(initialPhotos);
@@ -109,6 +111,11 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
     (category === "All" || photo.category === category) &&
     `${photo.title} ${photo.photographer} ${photo.category} ${photo.description ?? ""} ${(photo.tags ?? []).join(" ")}`.toLowerCase().includes(query.toLowerCase())
   ), [allPhotos, category, query]);
+
+  const visiblePhotos = useMemo(
+    () => showAllPhotos ? filtered : filtered.slice(0, INITIAL_GALLERY_SIZE),
+    [filtered, showAllPhotos],
+  );
 
   const dailyHero = useMemo(() => {
     const ranked = [...allPhotos].sort((a, b) =>
@@ -262,7 +269,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
         <a className="mobile-account-link" href="/login" aria-label={user ? "Open my account" : "Sign in"}>{user ? "Account" : "Sign in"}</a>
         <a className="upload-button" href="/submit">
           <span className="upload-button-copy"><strong>Share your work</strong><small>Submit to LUMA</small></span>
-          <span className="upload-button-icon" aria-hidden="true">↗</span>
+          <span className="upload-button-icon" aria-hidden="true"><ImageUp size={25} strokeWidth={1.8} /></span>
         </a>
       </header>
 
@@ -284,7 +291,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
           <p>Discover remarkable images from photographers everywhere. Free to explore, easy to share, ready to download.</p>
           <form className="search" role="search" onSubmit={(event) => event.preventDefault()}>
             <span>⌕</span>
-            <input ref={searchRef} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search places, moods, creators…" aria-label="Search photos" />
+            <input ref={searchRef} type="search" value={query} onChange={(event) => { setQuery(event.target.value); setShowAllPhotos(false); }} placeholder="Search places, moods, creators…" aria-label="Search photos" />
             <kbd aria-label="Keyboard shortcut Control or Command K">⌘K</kbd>
           </form>
         </div>
@@ -295,13 +302,13 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
         <div className="gallery-heading"><div><span className="eyebrow">The latest edit</span><h2>Recently published</h2></div><p>Authentic photographs, newest first. Every frame opens into its own searchable story.</p></div>
         <div className="filter-row">
           <div className="categories" role="group" aria-label="Photo categories">
-            {categories.map((item) => <button type="button" key={item} aria-pressed={category === item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}
+            {categories.map((item) => <button type="button" key={item} aria-pressed={category === item} className={category === item ? "active" : ""} onClick={() => { setCategory(item); setShowAllPhotos(false); }}>{item}</button>)}
           </div>
           <span className="result-count">{filtered.length.toString().padStart(2, "0")} photographs</span>
         </div>
 
-        <div className="masonry">
-          {filtered.map((photo) => {
+        <div className="masonry" id="photo-results">
+          {visiblePhotos.map((photo) => {
             const currentStats = photoStats(photo);
             return <article className={`photo-card ${photo.height}`} key={photo.id}>
               <button type="button" className="image-button" onClick={() => openPhoto(photo)} aria-label={`Open ${photo.title}`}>
@@ -343,6 +350,25 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
             </article>;
           })}
         </div>
+        {filtered.length > INITIAL_GALLERY_SIZE && <div className="gallery-pagination">
+          <button
+            type="button"
+            className="gallery-view-toggle"
+            aria-expanded={showAllPhotos}
+            aria-controls="photo-results"
+            onClick={() => {
+              if (showAllPhotos) {
+                setShowAllPhotos(false);
+                window.requestAnimationFrame(() => document.getElementById("collections")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+                return;
+              }
+              setShowAllPhotos(true);
+            }}
+          >
+            <span><strong>{showAllPhotos ? "Show less" : `View all ${filtered.length} photographs`}</strong><small>{showAllPhotos ? `Showing all ${filtered.length}` : `${filtered.length - INITIAL_GALLERY_SIZE} more photographs`}</small></span>
+            {showAllPhotos ? <ChevronUp size={20} strokeWidth={1.8} aria-hidden="true" /> : <ChevronDown size={20} strokeWidth={1.8} aria-hidden="true" />}
+          </button>
+        </div>}
         {filtered.length === 0 && <div className="empty">No images found. Try another search.</div>}
       </section>
 

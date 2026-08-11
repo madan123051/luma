@@ -27,6 +27,8 @@ type PhotoDetails = {
 
 type BulkStandardMode = "missing" | "refresh";
 
+const INITIAL_ARCHIVE_CARD_COUNT = 6;
+
 const emptyDetails: PhotoDetails = {
   title: "", photographerName: "", category: "", description: "", tags: "",
   keywords: "", altText: "", seoTitle: "", seoDescription: "",
@@ -34,6 +36,14 @@ const emptyDetails: PhotoDetails = {
 
 function listFromText(value: string) {
   return [...new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))];
+}
+
+function archiveDateValue(date: Date | null) {
+  if (!date) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,6 +81,8 @@ export function AdminDashboard() {
   const [authReady, setAuthReady] = useState(false);
   const [items, setItems] = useState<Submission[]>([]);
   const [filter, setFilter] = useState<SubmissionStatus | "all">("all");
+  const [archiveDate, setArchiveDate] = useState("");
+  const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [selected, setSelected] = useState<Submission | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -119,14 +131,30 @@ export function AdminDashboard() {
     }
   }), []);
 
-  const visible = useMemo(
-    () => filter === "all" ? items : items.filter((item) => item.status === filter),
-    [items, filter],
+  const visible = useMemo(() => {
+    const statusMatches = filter === "all" ? items : items.filter((item) => item.status === filter);
+    return archiveDate
+      ? statusMatches.filter((item) => archiveDateValue(item.createdAt) === archiveDate)
+      : statusMatches;
+  }, [items, filter, archiveDate]);
+
+  const displayedVisible = useMemo(
+    () => archiveExpanded ? visible : visible.slice(0, INITIAL_ARCHIVE_CARD_COUNT),
+    [archiveExpanded, visible],
   );
 
   const groupedVisible = useMemo(() => {
-    const groups = new Map<string, { key: string; month: string; year: string; items: Submission[] }>();
+    const totals = new Map<string, number>();
     for (const item of visible) {
+      const date = item.createdAt;
+      const key = date
+        ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+        : "undated";
+      totals.set(key, (totals.get(key) ?? 0) + 1);
+    }
+
+    const groups = new Map<string, { key: string; month: string; year: string; total: number; items: Submission[] }>();
+    for (const item of displayedVisible) {
       const date = item.createdAt;
       const key = date
         ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
@@ -136,13 +164,14 @@ export function AdminDashboard() {
           key,
           month: date ? new Intl.DateTimeFormat("en", { month: "long" }).format(date) : "Recently added",
           year: date ? String(date.getFullYear()) : "Date pending",
+          total: totals.get(key) ?? 0,
           items: [],
         });
       }
       groups.get(key)?.items.push(item);
     }
     return [...groups.values()];
-  }, [visible]);
+  }, [displayedVisible, visible]);
 
   const counts = {
     pending: items.filter((item) => item.status === "pending").length,
@@ -473,7 +502,7 @@ export function AdminDashboard() {
       <p className="admin-sidebar-label">Editorial workspace</p>
       <nav aria-label="Admin sections">
         <button type="button" className={view === "upload" ? "active" : ""} disabled={bulkStandardBusy} onClick={() => setView("upload")}>AI publish studio<span>＋</span></button>
-        {(["pending", "approved", "rejected", "all"] as const).map((item) => <button type="button" className={view === "review" && filter === item ? "active" : ""} onClick={() => { setView("review"); setFilter(item); }} key={item}>{item}<span>{item === "all" ? items.length : counts[item]}</span></button>)}
+        {(["pending", "approved", "rejected", "all"] as const).map((item) => <button type="button" className={view === "review" && filter === item ? "active" : ""} onClick={() => { setView("review"); setFilter(item); setArchiveExpanded(false); }} key={item}>{item}<span>{item === "all" ? items.length : counts[item]}</span></button>)}
       </nav>
       <div><small>{user.email}</small><button type="button" disabled={bulkStandardBusy} onClick={() => signOut(auth)}>Sign out</button></div>
     </aside>
@@ -521,7 +550,7 @@ export function AdminDashboard() {
       </section> : <>
         <section className="archive-tools" aria-label="Photo archive tools">
           <div className="archive-summary">
-            <div className="archive-summary-count"><strong>{visible.length}</strong><span>{filter === "all" ? "total photographs" : `${filter} photographs`}</span></div>
+            <div className="archive-summary-count"><strong>{visible.length}</strong><span>{archiveDate ? "matching photographs" : filter === "all" ? "total photographs" : `${filter} photographs`}</span></div>
             <div className="archive-summary-actions">
               <p>Grouped by upload month · newest first</p>
               <div className="standard-bulk-actions">
@@ -536,18 +565,62 @@ export function AdminDashboard() {
               </div>
             </div>
           </div>
+          <div className="archive-filter-bar">
+            <label className="archive-date-field" htmlFor="archive-upload-date">
+              <span>Find by upload date</span>
+              <input
+                id="archive-upload-date"
+                type="date"
+                value={archiveDate}
+                onChange={(event) => {
+                  setArchiveDate(event.target.value);
+                  setArchiveExpanded(false);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="archive-date-reset"
+              disabled={!archiveDate}
+              onClick={() => {
+                setArchiveDate("");
+                setArchiveExpanded(false);
+              }}
+            >
+              Clear date
+            </button>
+            <p className="archive-filter-result" role="status">
+              {archiveDate
+                ? `${visible.length} ${visible.length === 1 ? "photograph" : "photographs"} uploaded on this date`
+                : visible.length > INITIAL_ARCHIVE_CARD_COUNT && !archiveExpanded
+                  ? `Showing the newest ${INITIAL_ARCHIVE_CARD_COUNT} photographs`
+                  : `Showing ${visible.length} ${visible.length === 1 ? "photograph" : "photographs"}`}
+            </p>
+          </div>
           {(bulkStandardProgress || bulkStandardMessage) && <div className="bulk-standard-feedback">
             <UploadProgress progress={bulkStandardProgress} />
             {bulkStandardMessage && <p className={bulkStandardErrors.length ? "bulk-standard-message has-errors" : "bulk-standard-message"} role="status">{bulkStandardMessage}</p>}
             {bulkStandardErrors.length > 0 && <details className="bulk-standard-errors"><summary>Show {bulkStandardErrors.length} failed {bulkStandardErrors.length === 1 ? "photo" : "photos"}</summary><ul>{bulkStandardErrors.map((error) => <li key={error}>{error}</li>)}</ul></details>}
           </div>}
         </section>
-        <div className="monthly-archive">
+        <div className="monthly-archive" id="admin-photo-archive">
           {groupedVisible.map((group) => <section className="admin-month-group" key={group.key}>
-            <header><div><span>{group.year}</span><h2>{group.month}</h2></div><small>{group.items.length} {group.items.length === 1 ? "frame" : "frames"}</small></header>
+            <header><div><span>{group.year}</span><h2>{group.month}</h2></div><small>{group.items.length < group.total ? `${group.items.length} of ${group.total} frames` : `${group.total} ${group.total === 1 ? "frame" : "frames"}`}</small></header>
             <div className="review-grid">{group.items.map((item) => <button type="button" className="review-card" key={item.id} onClick={() => openSubmission(item)}><div className="review-card-image"><img src={item.downloadUrl} alt={item.altText || item.title} />{item.aiGenerated && <span className="ai-card-badge">AI refined</span>}</div><div><span className={`status ${item.status}`}>{item.status}</span><h3>{item.title}</h3><p>{item.photographerName} · {item.category}</p><small>{item.createdAt?.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }) ?? "Just now"}</small></div></button>)}</div>
           </section>)}
         </div>
+        {visible.length > INITIAL_ARCHIVE_CARD_COUNT && <div className="archive-view-controls">
+          <span>{archiveExpanded ? `All ${visible.length} photographs are visible` : `${visible.length - displayedVisible.length} more in this archive`}</span>
+          <button
+            type="button"
+            className="archive-view-toggle"
+            aria-expanded={archiveExpanded}
+            aria-controls="admin-photo-archive"
+            onClick={() => setArchiveExpanded((expanded) => !expanded)}
+          >
+            {archiveExpanded ? `Show first ${INITIAL_ARCHIVE_CARD_COUNT}` : `View all ${visible.length} photographs`}
+          </button>
+        </div>}
         {!visible.length && <div className="empty">Nothing in this archive.</div>}
       </>}
     </section>
