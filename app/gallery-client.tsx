@@ -3,11 +3,11 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { Download, Heart, LoaderCircle, Share2, Sparkles } from "lucide-react";
+import { Clock3, Download, Heart, LoaderCircle, Share2, Sparkles } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { photoPath, type Photo } from "@/lib/gallery-data";
 import { PHOTO_CATEGORIES } from "@/lib/ai-metadata";
-import { downloadPublicPhoto } from "@/lib/image-processing";
+import { downloadPublicPhoto, downloadStandardPhoto } from "@/lib/image-processing";
 import {
   addPhotoComment, getPhotoComments, getPhotoStats, recordSavedShare,
   toggleSavedLike, type PhotoComment, type PhotoStats,
@@ -31,7 +31,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
   const [comments, setComments] = useState<PhotoComment[]>([]);
   const [commentBusy, setCommentBusy] = useState(false);
   const [interactionBusy, setInteractionBusy] = useState("");
-  const [downloadingId, setDownloadingId] = useState<number | string | null>(null);
+  const [downloading, setDownloading] = useState<{ id: number | string; tier: "preview" | "standard" } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const lightboxRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -142,9 +142,9 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
   }
 
   function standardSizeLabel(photo: Photo) {
-    if (!photo.standardUrl) return "Legacy free preview · under 4 MB";
-    if (!photo.standardFileSize) return "Free JPEG · 5–10 MB when source allows";
-    return `Free JPEG · ${(photo.standardFileSize / (1024 * 1024)).toFixed(1)} MB`;
+    if (!photo.standardUrl) return "Not ready for this photo · check back soon";
+    if (!photo.standardFileSize) return "White title strip · 5–10 MB when source allows";
+    return `White title strip · ${(photo.standardFileSize / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   function openPhoto(photo: Photo) {
@@ -193,21 +193,40 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
     }
   }
 
-  async function download(photo: Photo) {
-    setDownloadingId(photo.id);
+  function isDownloading(photo: Photo, tier: "preview" | "standard") {
+    return downloading?.id === photo.id && downloading.tier === tier;
+  }
+
+  async function downloadPreview(photo: Photo) {
+    setDownloading({ id: photo.id, tier: "preview" });
     try {
       await downloadPublicPhoto({
         url: photo.sourceUrl ?? photo.src,
         title: photo.title,
         photographer: photo.photographer,
         alreadyWatermarked: photo.watermarked,
-        standardUrl: photo.standardUrl,
       });
-      notify(photo.standardUrl ? "Standard download started" : "Legacy preview download ready");
+      notify("Free Preview download started");
     } catch {
-      notify("Download could not be prepared. Please try again.");
+      notify("Preview download could not be prepared. Please try again.");
     } finally {
-      setDownloadingId(null);
+      setDownloading(null);
+    }
+  }
+
+  async function downloadStandard(photo: Photo) {
+    if (!photo.standardUrl) {
+      notify("Standard Size is still being prepared for this photo.");
+      return;
+    }
+    setDownloading({ id: photo.id, tier: "standard" });
+    try {
+      await downloadStandardPhoto({ standardUrl: photo.standardUrl, title: photo.title });
+      notify("Standard Size download started");
+    } catch {
+      notify("Standard Size download could not be started. Please try again.");
+    } finally {
+      setDownloading(null);
     }
   }
 
@@ -297,8 +316,8 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
                   <button type="button" data-tooltip="Share" onClick={() => share(photo)} aria-label="Share photo">
                     <Share2 className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />
                   </button>
-                  <button type="button" data-tooltip="Standard size" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-busy={downloadingId === photo.id} aria-label="Download Standard size copyright photo">
-                    {downloadingId === photo.id
+                  <button type="button" data-tooltip="Download free preview" onClick={() => downloadPreview(photo)} disabled={isDownloading(photo, "preview")} aria-busy={isDownloading(photo, "preview")} aria-label="Download free watermarked preview">
+                    {isDownloading(photo, "preview")
                       ? <LoaderCircle className="interaction-icon is-spinning" size={18} strokeWidth={1.8} aria-hidden="true" />
                       : <Download className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />}
                   </button>
@@ -314,8 +333,8 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
                   <button type="button" onClick={() => share(photo)} aria-label="Share photo">
                     <Share2 className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />
                   </button>
-                  <button type="button" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-busy={downloadingId === photo.id} aria-label="Download Standard size copyright photo">
-                    {downloadingId === photo.id
+                  <button type="button" onClick={() => downloadPreview(photo)} disabled={isDownloading(photo, "preview")} aria-busy={isDownloading(photo, "preview")} aria-label="Download free watermarked preview">
+                    {isDownloading(photo, "preview")
                       ? <LoaderCircle className="interaction-icon is-spinning" size={18} strokeWidth={1.8} aria-hidden="true" />
                       : <Download className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />}
                   </button>
@@ -357,11 +376,22 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
                 <span className="action-symbol" aria-hidden="true"><Share2 size={20} strokeWidth={1.8} /></span>
                 <span><strong>Share photograph</strong><small>{photoStats(selected).sharesCount} recorded shares</small></span>
               </button>
-              <button type="button" onClick={() => download(selected)} disabled={downloadingId === selected.id} aria-busy={downloadingId === selected.id}>
-                <span className="action-symbol" aria-hidden="true">{downloadingId === selected.id ? <LoaderCircle className="is-spinning" size={20} strokeWidth={1.8} /> : <Download size={20} strokeWidth={1.8} />}</span>
-                <span><strong>{downloadingId === selected.id ? "Preparing…" : "Standard size"}</strong><small>{standardSizeLabel(selected)}</small></span>
+              <button className="download-preview-action" type="button" onClick={() => downloadPreview(selected)} disabled={isDownloading(selected, "preview")} aria-busy={isDownloading(selected, "preview")}>
+                <span className="action-symbol" aria-hidden="true">{isDownloading(selected, "preview") ? <LoaderCircle className="is-spinning" size={20} strokeWidth={1.8} /> : <Download size={20} strokeWidth={1.8} />}</span>
+                <span><strong>{isDownloading(selected, "preview") ? "Preparing Preview…" : "Free Preview"}</strong><small>Watermarked JPEG · under 4 MB</small></span>
               </button>
-              <a href="/premium">
+              <button
+                className="download-standard-action"
+                type="button"
+                onClick={() => downloadStandard(selected)}
+                disabled={!selected.standardUrl || isDownloading(selected, "standard")}
+                aria-busy={isDownloading(selected, "standard")}
+                aria-label={selected.standardUrl ? "Download Standard Size photograph" : "Standard Size is being prepared"}
+              >
+                <span className="action-symbol" aria-hidden="true">{isDownloading(selected, "standard") ? <LoaderCircle className="is-spinning" size={20} strokeWidth={1.8} /> : selected.standardUrl ? <Download size={20} strokeWidth={1.8} /> : <Clock3 size={20} strokeWidth={1.8} />}</span>
+                <span><strong>{isDownloading(selected, "standard") ? "Starting Standard…" : selected.standardUrl ? "Standard Size" : "Standard preparing"}</strong><small>{standardSizeLabel(selected)}</small></span>
+              </button>
+              <a className="premium-action" href="/premium">
                 <span className="action-symbol" aria-hidden="true"><Sparkles size={20} strokeWidth={1.8} /></span>
                 <span><strong>Original quality</strong><small>Premium access · coming soon</small></span>
               </a>

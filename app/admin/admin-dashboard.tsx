@@ -89,6 +89,11 @@ export function AdminDashboard() {
   const [standardProgress, setStandardProgress] = useState<SubmissionProgress | null>(null);
   const [standardMessage, setStandardMessage] = useState("");
   const [standardBusy, setStandardBusy] = useState(false);
+  const [bulkStandardProgress, setBulkStandardProgress] = useState<SubmissionProgress | null>(null);
+  const [bulkStandardMessage, setBulkStandardMessage] = useState("");
+  const [bulkStandardErrors, setBulkStandardErrors] = useState<string[]>([]);
+  const [bulkStandardBusy, setBulkStandardBusy] = useState(false);
+  const bulkStandardInFlightRef = useRef(false);
   const [verificationMessage, setVerificationMessage] = useState("");
 
   useEffect(() => () => {
@@ -141,6 +146,11 @@ export function AdminDashboard() {
     approved: items.filter((item) => item.status === "approved").length,
     rejected: items.filter((item) => item.status === "rejected").length,
   };
+
+  const missingStandardItems = useMemo(
+    () => items.filter((item) => item.status === "approved" && !item.standardDownloadUrl),
+    [items],
+  );
 
   function openSubmission(item: Submission) {
     setSelected(item);
@@ -243,6 +253,59 @@ export function AdminDashboard() {
     } finally {
       setStandardBusy(false);
     }
+  }
+
+  async function buildAllMissingStandards() {
+    if (bulkStandardInFlightRef.current || !missingStandardItems.length) return;
+    const queue = [...missingStandardItems];
+    const total = queue.length;
+    const failures: string[] = [];
+    let completed = 0;
+
+    bulkStandardInFlightRef.current = true;
+    setBulkStandardBusy(true);
+    setBulkStandardMessage("");
+    setBulkStandardErrors([]);
+    setBulkStandardProgress({ percent: 0, stage: "preparing", label: `Preparing ${total} Standard ${total === 1 ? "download" : "downloads"}…` });
+
+    for (const [index, item] of queue.entries()) {
+      try {
+        const standard = await createStandardDownloadForSubmission(item, (progress) => {
+          const percent = Math.min(99, Math.round(((index + progress.percent / 100) / total) * 100));
+          setBulkStandardProgress({
+            percent,
+            stage: progress.stage === "complete" ? "saving" : progress.stage,
+            label: `${index + 1} of ${total} · ${item.title} · ${progress.label}`,
+          });
+        });
+        completed += 1;
+        setItems((current) => current.map((currentItem) => (
+          currentItem.id === item.id ? { ...currentItem, ...standard } : currentItem
+        )));
+      } catch (error) {
+        failures.push(`${item.title}: ${submissionErrorMessage(error)}`);
+        setBulkStandardProgress({
+          percent: Math.round(((index + 1) / total) * 100),
+          stage: "saving",
+          label: `${item.title} could not be prepared · continuing with the next photo…`,
+        });
+      }
+    }
+
+    setBulkStandardErrors(failures);
+    setBulkStandardProgress({
+      percent: 100,
+      stage: failures.length ? "error" : "complete",
+      label: failures.length ? `Finished with ${failures.length} ${failures.length === 1 ? "photo" : "photos"} needing retry` : "All Standard downloads are ready",
+    });
+    setBulkStandardMessage(
+      failures.length
+        ? `${completed} of ${total} Standard downloads created. Use “Retry missing Standards” to retry the remaining ${failures.length}.`
+        : `${completed} Standard ${completed === 1 ? "download is" : "downloads are"} ready for visitors.`,
+    );
+    setBulkStandardBusy(false);
+    bulkStandardInFlightRef.current = false;
+    void load().catch(() => {});
   }
 
   function choosePhoto(file: File | undefined) {
@@ -380,10 +443,10 @@ export function AdminDashboard() {
       <Link className="brand" href="/">LU<span>●</span>MA <small>studio</small></Link>
       <p className="admin-sidebar-label">Editorial workspace</p>
       <nav aria-label="Admin sections">
-        <button type="button" className={view === "upload" ? "active" : ""} onClick={() => setView("upload")}>AI publish studio<span>＋</span></button>
+        <button type="button" className={view === "upload" ? "active" : ""} disabled={bulkStandardBusy} onClick={() => setView("upload")}>AI publish studio<span>＋</span></button>
         {(["pending", "approved", "rejected", "all"] as const).map((item) => <button type="button" className={view === "review" && filter === item ? "active" : ""} onClick={() => { setView("review"); setFilter(item); }} key={item}>{item}<span>{item === "all" ? items.length : counts[item]}</span></button>)}
       </nav>
-      <div><small>{user.email}</small><button type="button" onClick={() => signOut(auth)}>Sign out</button></div>
+      <div><small>{user.email}</small><button type="button" disabled={bulkStandardBusy} onClick={() => signOut(auth)}>Sign out</button></div>
     </aside>
 
     <section className="admin-main">
@@ -422,12 +485,28 @@ export function AdminDashboard() {
           <div className="form-pair"><label>Search tags<input value={uploadDetails.tags} onChange={(event) => setUploadDetails({ ...uploadDetails, tags: event.target.value })} placeholder="wildlife, coastal light, japan" /></label><label>SEO phrases<input value={uploadDetails.keywords} onChange={(event) => setUploadDetails({ ...uploadDetails, keywords: event.target.value })} placeholder="natural phrases, comma separated" /></label></div>
           <label>Accessible image description<input value={uploadDetails.altText} onChange={(event) => setUploadDetails({ ...uploadDetails, altText: event.target.value })} maxLength={240} placeholder="Describe what is visibly present in the photograph" /></label>
           <div className="seo-fields"><span>Search preview</span><label>SEO title<input value={uploadDetails.seoTitle} onChange={(event) => setUploadDetails({ ...uploadDetails, seoTitle: event.target.value })} maxLength={70} /></label><label>SEO description<textarea value={uploadDetails.seoDescription} onChange={(event) => setUploadDetails({ ...uploadDetails, seoDescription: event.target.value })} maxLength={170} /></label></div>
-          <button type="submit" className="publish premium-publish" disabled={busy}>{busy ? `Publishing · ${uploadProgress?.percent ?? 0}%` : "Review complete · publish ↗"}</button>
+          <button type="submit" className="publish premium-publish" disabled={busy || bulkStandardBusy}>{busy ? `Publishing · ${uploadProgress?.percent ?? 0}%` : "Review complete · publish ↗"}</button>
           <UploadProgress progress={uploadProgress} />
           {uploadMessage && <p className="form-message" role="status">{uploadMessage}</p>}
         </form>
       </section> : <>
-        <div className="archive-summary"><div><strong>{visible.length}</strong><span>{filter === "all" ? "total photographs" : `${filter} photographs`}</span></div><p>Grouped by upload month · newest first</p></div>
+        <section className="archive-tools" aria-label="Photo archive tools">
+          <div className="archive-summary">
+            <div className="archive-summary-count"><strong>{visible.length}</strong><span>{filter === "all" ? "total photographs" : `${filter} photographs`}</span></div>
+            <div className="archive-summary-actions">
+              <p>Grouped by upload month · newest first</p>
+              {missingStandardItems.length ? <button type="button" className="bulk-standard-button" disabled={bulkStandardBusy || busy || standardBusy} onClick={buildAllMissingStandards}>
+                <span>{bulkStandardBusy ? "Creating Standards…" : bulkStandardErrors.length ? "Retry missing Standards" : "Create missing Standards"}</span>
+                <b>{missingStandardItems.length}</b>
+              </button> : <span className="all-standards-ready">✓ All Standard downloads ready</span>}
+            </div>
+          </div>
+          {(bulkStandardProgress || bulkStandardMessage) && <div className="bulk-standard-feedback">
+            <UploadProgress progress={bulkStandardProgress} />
+            {bulkStandardMessage && <p className={bulkStandardErrors.length ? "bulk-standard-message has-errors" : "bulk-standard-message"} role="status">{bulkStandardMessage}</p>}
+            {bulkStandardErrors.length > 0 && <details className="bulk-standard-errors"><summary>Show {bulkStandardErrors.length} failed {bulkStandardErrors.length === 1 ? "photo" : "photos"}</summary><ul>{bulkStandardErrors.map((error) => <li key={error}>{error}</li>)}</ul></details>}
+          </div>}
+        </section>
         <div className="monthly-archive">
           {groupedVisible.map((group) => <section className="admin-month-group" key={group.key}>
             <header><div><span>{group.year}</span><h2>{group.month}</h2></div><small>{group.items.length} {group.items.length === 1 ? "frame" : "frames"}</small></header>
@@ -438,6 +517,6 @@ export function AdminDashboard() {
       </>}
     </section>
 
-    {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}><section className="review-modal" onMouseDown={(event) => event.stopPropagation()}><button type="button" className="close" onClick={() => setSelected(null)} aria-label="Close photo editor">×</button><div className="review-image"><img src={selected.downloadUrl} alt={selected.altText || selected.title} /></div><aside><span className="tag">{selected.category}</span>{editing ? <form className="edit-submission-form" onSubmit={saveDetails}><label>Photograph title<input required maxLength={140} value={editValues.title} onChange={(event) => setEditValues({ ...editValues, title: event.target.value })} /></label><label>Photographer name<input required maxLength={100} value={editValues.photographerName} onChange={(event) => setEditValues({ ...editValues, photographerName: event.target.value })} /></label><label>Category<select required value={editValues.category} onChange={(event) => setEditValues({ ...editValues, category: event.target.value })}>{PHOTO_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label><label>Description<textarea maxLength={1000} value={editValues.description} onChange={(event) => setEditValues({ ...editValues, description: event.target.value })} /></label><label>Tags<input value={editValues.tags} onChange={(event) => setEditValues({ ...editValues, tags: event.target.value })} /></label><label>SEO phrases<input value={editValues.keywords} onChange={(event) => setEditValues({ ...editValues, keywords: event.target.value })} /></label><label>Alt text<textarea maxLength={240} value={editValues.altText} onChange={(event) => setEditValues({ ...editValues, altText: event.target.value })} /></label><label>SEO title<input maxLength={70} value={editValues.seoTitle} onChange={(event) => setEditValues({ ...editValues, seoTitle: event.target.value })} /></label><label>SEO description<textarea maxLength={170} value={editValues.seoDescription} onChange={(event) => setEditValues({ ...editValues, seoDescription: event.target.value })} /></label><div className="edit-form-actions"><button type="button" onClick={() => setEditing(false)}>Cancel</button><button disabled={busy}>{busy ? "Saving…" : "Save changes"}</button></div></form> : <><h2>{selected.title}</h2><p>By <b>{selected.photographerName}</b><br />{selected.submitterEmail}</p><p className="review-story">{selected.description || "No description provided."}</p>{selected.tags.length > 0 && <div className="admin-tag-list">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}<div className="submission-manage-actions"><button type="button" disabled={busy || standardBusy} onClick={() => setEditing(true)}>Edit metadata</button><button type="button" disabled={busy || standardBusy} onClick={buildStandardDownload}>{standardBusy ? `Standard ${standardProgress?.percent ?? 0}%` : selected.standardDownloadUrl ? "Refresh Standard" : "Create Standard"}</button><button type="button" className="danger" disabled={busy || standardBusy} onClick={removePhoto}>{busy ? "Deleting…" : "Delete permanently"}</button></div><UploadProgress progress={standardProgress} />{standardMessage && <p className="standard-message" role="status">{standardMessage}</p>}<label>Private note<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional feedback for photographer" /></label><div className="review-actions"><button type="button" disabled={busy || standardBusy} onClick={() => review("rejected")}>Reject</button><button type="button" disabled={busy || standardBusy} onClick={() => review("pending")}>Keep pending</button><button type="button" disabled={busy || standardBusy} onClick={() => review("approved")}>Approve & publish ↗</button></div></>}</aside></section></div>}
+    {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}><section className="review-modal" onMouseDown={(event) => event.stopPropagation()}><button type="button" className="close" onClick={() => setSelected(null)} aria-label="Close photo editor">×</button><div className="review-image"><img src={selected.downloadUrl} alt={selected.altText || selected.title} /></div><aside><span className="tag">{selected.category}</span>{editing ? <form className="edit-submission-form" onSubmit={saveDetails}><label>Photograph title<input required maxLength={140} value={editValues.title} onChange={(event) => setEditValues({ ...editValues, title: event.target.value })} /></label><label>Photographer name<input required maxLength={100} value={editValues.photographerName} onChange={(event) => setEditValues({ ...editValues, photographerName: event.target.value })} /></label><label>Category<select required value={editValues.category} onChange={(event) => setEditValues({ ...editValues, category: event.target.value })}>{PHOTO_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label><label>Description<textarea maxLength={1000} value={editValues.description} onChange={(event) => setEditValues({ ...editValues, description: event.target.value })} /></label><label>Tags<input value={editValues.tags} onChange={(event) => setEditValues({ ...editValues, tags: event.target.value })} /></label><label>SEO phrases<input value={editValues.keywords} onChange={(event) => setEditValues({ ...editValues, keywords: event.target.value })} /></label><label>Alt text<textarea maxLength={240} value={editValues.altText} onChange={(event) => setEditValues({ ...editValues, altText: event.target.value })} /></label><label>SEO title<input maxLength={70} value={editValues.seoTitle} onChange={(event) => setEditValues({ ...editValues, seoTitle: event.target.value })} /></label><label>SEO description<textarea maxLength={170} value={editValues.seoDescription} onChange={(event) => setEditValues({ ...editValues, seoDescription: event.target.value })} /></label><div className="edit-form-actions"><button type="button" onClick={() => setEditing(false)}>Cancel</button><button disabled={busy || bulkStandardBusy}>{busy ? "Saving…" : "Save changes"}</button></div></form> : <><h2>{selected.title}</h2><p>By <b>{selected.photographerName}</b><br />{selected.submitterEmail}</p><p className="review-story">{selected.description || "No description provided."}</p>{selected.tags.length > 0 && <div className="admin-tag-list">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}<div className="submission-manage-actions"><button type="button" disabled={busy || standardBusy || bulkStandardBusy} onClick={() => setEditing(true)}>Edit metadata</button><button type="button" disabled={busy || standardBusy || bulkStandardBusy} onClick={buildStandardDownload}>{standardBusy ? `Standard ${standardProgress?.percent ?? 0}%` : selected.standardDownloadUrl ? "Refresh Standard" : "Create Standard"}</button><button type="button" className="danger" disabled={busy || standardBusy || bulkStandardBusy} onClick={removePhoto}>{busy ? "Deleting…" : "Delete permanently"}</button></div><UploadProgress progress={standardProgress} />{standardMessage && <p className="standard-message" role="status">{standardMessage}</p>}<label>Private note<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional feedback for photographer" /></label><div className="review-actions"><button type="button" disabled={busy || standardBusy || bulkStandardBusy} onClick={() => review("rejected")}>Reject</button><button type="button" disabled={busy || standardBusy || bulkStandardBusy} onClick={() => review("pending")}>Keep pending</button><button type="button" disabled={busy || standardBusy || bulkStandardBusy} onClick={() => review("approved")}>Approve & publish ↗</button></div></>}</aside></section></div>}
   </main>;
 }

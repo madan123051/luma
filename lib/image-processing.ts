@@ -236,21 +236,8 @@ export async function downloadPublicPhoto(input: {
   title: string;
   photographer: string;
   alreadyWatermarked?: boolean;
-  standardUrl?: string;
 }) {
   const safeTitle = input.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "luma-photo";
-  if (input.standardUrl) {
-    const link = document.createElement("a");
-    link.href = input.standardUrl;
-    link.download = `${safeTitle}-standard-wildsaura.jpg`;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    return;
-  }
-
   const response = await fetch("/api/download", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -266,4 +253,23 @@ export async function downloadPublicPhoto(input: {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+export async function downloadStandardPhoto(input: {
+  standardUrl?: string;
+  title: string;
+}) {
+  if (!input.standardUrl) {
+    throw new Error("The Standard download is not ready for this photograph.");
+  }
+
+  const safeTitle = input.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "luma-photo";
+  const link = document.createElement("a");
+  link.href = input.standardUrl;
+  link.download = `${safeTitle}-standard-wildsaura.jpg`;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
