@@ -182,7 +182,7 @@ export async function createStandardPhoto(source: Blob, title: string, credit: s
         const scale = baseScale * scaleFactor;
         const width = Math.max(1, Math.round(image.naturalWidth * scale));
         const imageHeight = Math.max(1, Math.round(image.naturalHeight * scale));
-        const bannerHeight = Math.max(96, Math.min(260, Math.round(width * 0.047)));
+        const bannerHeight = Math.max(152, Math.min(260, Math.round(width * 0.047)));
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = imageHeight + bannerHeight;
