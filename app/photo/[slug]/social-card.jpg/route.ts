@@ -11,8 +11,9 @@ export async function GET(
     const { slug } = await params;
     const photo = await getPhotoBySlug(slug);
     if (!photo) return new Response("Photograph not found.", { status: 404 });
-    const source = await fetchRemoteImage(photo.sourceUrl ?? photo.src);
-    const socialCard = await createSocialPreview(source);
+    const sourceUrl = photo.sourceUrl ?? photo.src;
+    const source = await fetchRemoteImage(sourceUrl);
+    const socialCard = await createSocialPreview(source, photo.photographer);
     return new Response(new Uint8Array(socialCard), {
       headers: {
         "Content-Type": "image/jpeg",
