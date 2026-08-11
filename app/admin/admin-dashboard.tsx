@@ -33,6 +33,22 @@ function listFromText(value: string) {
   return [...new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isAiPhotoMetadata(value: unknown): value is AiPhotoMetadata {
+  if (!isRecord(value)) return false;
+  const stringFields = ["title", "description", "altText", "seoTitle", "seoDescription", "locationHint", "mood"];
+  const arrayFields = ["tags", "keywords", "subjects"];
+  return (
+    stringFields.every((field) => typeof value[field] === "string") &&
+    arrayFields.every((field) => Array.isArray(value[field]) && value[field].every((item) => typeof item === "string")) &&
+    typeof value.category === "string" &&
+    (PHOTO_CATEGORIES as readonly string[]).includes(value.category)
+  );
+}
+
 function detailValues(item: Submission): PhotoDetails {
   return {
     title: item.title,
@@ -66,6 +82,7 @@ export function AdminDashboard() {
   const [aiMessage, setAiMessage] = useState("");
   const [aiContext, setAiContext] = useState("");
   const [aiApplied, setAiApplied] = useState(false);
+  const [aiSearchAttributionHtml, setAiSearchAttributionHtml] = useState("");
 
   useEffect(() => () => {
     if (selectedPreviewUrl) URL.revokeObjectURL(selectedPreviewUrl);
@@ -174,6 +191,7 @@ export function AdminDashboard() {
     setSelectedPreviewUrl(file ? URL.createObjectURL(file) : "");
     setAiMessage("");
     setAiApplied(false);
+    setAiSearchAttributionHtml("");
   }
 
   async function analyzePhoto() {
@@ -183,6 +201,7 @@ export function AdminDashboard() {
     }
     setAiBusy(true);
     setAiMessage("Reading the frame and researching natural search language…");
+    setAiSearchAttributionHtml("");
     try {
       const imageDataUrl = await createAiPhotoDataUrl(selectedFile);
       const token = await user.getIdToken();
@@ -195,9 +214,24 @@ export function AdminDashboard() {
           context: aiContext.trim(),
         }),
       });
-      const payload = await response.json() as AiPhotoMetadata | { metadata?: AiPhotoMetadata; error?: string };
-      if (!response.ok) throw new Error("error" in payload && payload.error ? payload.error : "AI suggestions could not be prepared.");
-      const metadata = "metadata" in payload && payload.metadata ? payload.metadata : payload as AiPhotoMetadata;
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        throw new Error("AI service returned an unreadable response.");
+      }
+      const envelope = isRecord(payload) ? payload : {};
+      if (!response.ok) {
+        throw new Error(typeof envelope.error === "string" && envelope.error ? envelope.error : "AI suggestions could not be prepared.");
+      }
+      const metadataValue = "metadata" in envelope ? envelope.metadata : payload;
+      if (!isAiPhotoMetadata(metadataValue)) {
+        throw new Error("AI returned incomplete metadata. Please try again.");
+      }
+      const metadata = metadataValue;
+      const searchAttributionHtml = typeof envelope.searchAttributionHtml === "string"
+        ? envelope.searchAttributionHtml
+        : "";
       setUploadDetails((details) => ({
         ...details,
         title: metadata.title,
@@ -210,8 +244,10 @@ export function AdminDashboard() {
         seoDescription: metadata.seoDescription,
       }));
       setAiApplied(true);
+      setAiSearchAttributionHtml(searchAttributionHtml);
       setAiMessage(`AI draft ready · ${metadata.subjects.slice(0, 3).join(" · ")}${metadata.locationHint ? ` · ${metadata.locationHint}` : ""}`);
     } catch (error) {
+      setAiSearchAttributionHtml("");
       setAiMessage(error instanceof Error ? error.message : "AI suggestions could not be prepared.");
     } finally {
       setAiBusy(false);
@@ -248,6 +284,7 @@ export function AdminDashboard() {
       setAiContext("");
       setAiApplied(false);
       setAiMessage("");
+      setAiSearchAttributionHtml("");
       setUploadMessage("Published successfully. The new photograph is live at the top of the gallery.");
       await load();
     } catch {
@@ -299,6 +336,7 @@ export function AdminDashboard() {
             <label>Optional context for accuracy<textarea value={aiContext} onChange={(event) => setAiContext(event.target.value)} maxLength={300} placeholder="Location, species, event or anything the camera cannot prove…" /></label>
             <button type="button" className="ai-generate-button" disabled={!selectedFile || aiBusy} onClick={analyzePhoto}><span>{aiBusy ? "Analyzing…" : "Generate SEO details"}</span><b aria-hidden="true">↗</b></button>
             {aiMessage && <p className="ai-message" aria-live="polite">{aiMessage}</p>}
+            {aiSearchAttributionHtml && <div className="ai-search-attribution"><span>Google Search context</span><iframe title="Google Search suggestions used for metadata" srcDoc={aiSearchAttributionHtml} sandbox="allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer" /></div>}
           </section>
 
           <div className="form-pair"><label>Photograph title<input value={uploadDetails.title} onChange={(event) => setUploadDetails({ ...uploadDetails, title: event.target.value })} maxLength={140} required /></label><label>Photographer name<input value={uploadDetails.photographerName} onChange={(event) => setUploadDetails({ ...uploadDetails, photographerName: event.target.value })} maxLength={100} required /></label></div>
