@@ -372,13 +372,21 @@ export async function createStandardDownloadForSubmission(
     await uploadStandard(resolvedStandardRef, 91, 98, "Installing the refreshed Standard file…");
   }
   report(99, "saving", "Saving the Standard download link…");
-  const standardDownloadUrl = await getDownloadURL(resolvedStandardRef);
-  await updateDoc(doc(db, "submissions", item.id), {
-    standardPath: resolvedStandardPath,
-    standardDownloadUrl,
-    standardFileSize: standardPhoto.size,
-    updatedAt: serverTimestamp(),
-  });
+  let standardDownloadUrl = "";
+  try {
+    standardDownloadUrl = await getDownloadURL(resolvedStandardRef);
+    await updateDoc(doc(db, "submissions", item.id), {
+      standardPath: resolvedStandardPath,
+      standardDownloadUrl,
+      standardFileSize: standardPhoto.size,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    if (resolvedStandardPath !== standardPath) {
+      await deleteObject(resolvedStandardRef).catch(() => {});
+    }
+    throw error;
+  }
   if (item.standardPath && item.standardPath !== resolvedStandardPath) {
     void deleteObject(ref(storage, item.standardPath)).catch(() => {});
   }
