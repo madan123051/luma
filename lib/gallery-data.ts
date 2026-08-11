@@ -4,6 +4,12 @@ export type Photo = {
   photographer: string;
   category: string;
   description?: string;
+  altText?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  tags?: string[];
+  keywords?: string[];
+  slug?: string;
   src: string;
   sourceUrl?: string;
   height: "tall" | "wide" | "standard";
@@ -19,10 +25,10 @@ export function slugify(value: string) {
     .replace(/(^-|-$)/g, "").slice(0, 110);
 }
 
-export function photoSlug(photo: Pick<Photo, "title" | "photographer">) {
-  return slugify(`${photo.title}-by-${photo.photographer}`);
+export function photoSlug(photo: Pick<Photo, "title" | "photographer"> & { slug?: string }) {
+  return photo.slug?.trim() || slugify(`${photo.title}-by-${photo.photographer}`);
 }
 
-export function photoPath(photo: Pick<Photo, "title" | "photographer">) {
+export function photoPath(photo: Pick<Photo, "title" | "photographer"> & { slug?: string }) {
   return `/photo/${photoSlug(photo)}`;
 }

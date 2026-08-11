@@ -5,6 +5,7 @@ type FirestoreValue = {
   integerValue?: string;
   booleanValue?: boolean;
   timestampValue?: string;
+  arrayValue?: { values?: Array<{ stringValue?: string }> };
 };
 
 type FirestoreDocument = {
@@ -18,6 +19,10 @@ function stringField(fields: Record<string, FirestoreValue>, key: string) {
 
 function integerField(fields: Record<string, FirestoreValue>, key: string) {
   return Number(fields[key]?.integerValue ?? 0);
+}
+
+function stringArrayField(fields: Record<string, FirestoreValue>, key: string) {
+  return fields[key]?.arrayValue?.values?.flatMap((value) => value.stringValue ? [value.stringValue] : []) ?? [];
 }
 
 async function fetchApprovedPhotos(): Promise<Photo[]> {
@@ -57,10 +62,16 @@ async function fetchApprovedPhotos(): Promise<Photo[]> {
     const publicVersion = fields.publicVersion?.booleanValue === true;
     return [{
       id,
+      slug: stringField(fields, "slug") || photoSlug({ title, photographer }),
       title,
       photographer,
       category: stringField(fields, "category") || "Photography",
       description: stringField(fields, "description"),
+      altText: stringField(fields, "altText"),
+      seoTitle: stringField(fields, "seoTitle"),
+      seoDescription: stringField(fields, "seoDescription"),
+      tags: stringArrayField(fields, "tags"),
+      keywords: stringArrayField(fields, "keywords"),
       src: publicVersion ? downloadUrl : `https://luma.wildsaura.com/api/preview?url=${encodeURIComponent(downloadUrl)}`,
       sourceUrl: downloadUrl,
       height: "standard",

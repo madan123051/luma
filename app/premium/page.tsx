@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Premium originals — Coming soon",
@@ -8,13 +9,13 @@ export const metadata: Metadata = {
 
 export default function PremiumPage() {
   return <main className="premium-page">
-    <a className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></a>
+    <Link className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></Link>
     <section>
       <span className="legal-kicker">LUMA Premium</span>
       <h1>Originals,<br/><em>coming soon.</em></h1>
       <p>Public downloads remain compressed and carry a small WildSaura copyright mark. Premium will unlock full-resolution viewing and original-file downloads with clear creator licensing.</p>
       <div className="premium-points"><span>Full resolution</span><span>Original files</span><span>Creator licensing</span></div>
-      <a className="premium-back" href="/">← Continue exploring</a>
+      <Link className="premium-back" href="/">← Continue exploring</Link>
     </section>
   </main>;
 }

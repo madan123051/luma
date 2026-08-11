@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { photoPath } from "@/lib/gallery-data";
 import { getPhotoBySlug } from "@/lib/public-gallery-server";
 import { PhotoActions } from "./photo-actions";
@@ -13,17 +14,19 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!photo) return { title: "Photograph not found", robots: { index: false, follow: false } };
   const canonical = photoPath(photo);
   const socialImage = `${canonical}/social-card.jpg?v=2`;
-  const description = photo.description?.trim() || `${photo.title}, a ${photo.category.toLowerCase()} photograph by ${photo.photographer}, featured on LUMA by WildSaura.`;
+  const description = photo.seoDescription?.trim() || photo.description?.trim() || `${photo.title}, a ${photo.category.toLowerCase()} photograph by ${photo.photographer}, featured on LUMA by WildSaura.`;
+  const metadataTitle = photo.seoTitle?.trim() || `${photo.title} by ${photo.photographer}`;
   return {
-    title: `${photo.title} by ${photo.photographer}`,
+    title: metadataTitle,
     description,
+    keywords: [...(photo.tags ?? []), ...(photo.keywords ?? [])],
     alternates: { canonical },
     authors: [{ name: photo.photographer }],
     robots: { index: true, follow: true, googleBot: { index: true, follow: true, "max-image-preview": "large" } },
     openGraph: {
       type: "article",
       url: canonical,
-      title: `${photo.title} by ${photo.photographer}`,
+      title: metadataTitle,
       description,
       siteName: "LUMA by WildSaura",
       images: [{
@@ -32,12 +35,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         type: "image/jpeg",
         width: 1200,
         height: 630,
-        alt: `${photo.title} by ${photo.photographer}`,
+        alt: photo.altText || `${photo.title} by ${photo.photographer}`,
       }],
     },
     twitter: {
       card: "summary_large_image",
-      title: `${photo.title} by ${photo.photographer}`,
+      title: metadataTitle,
       description,
       images: [socialImage],
     },
@@ -50,7 +53,7 @@ export default async function PhotoPage({ params }: { params: Promise<{ slug: st
   if (!photo) notFound();
   const canonical = `${siteUrl}${photoPath(photo)}`;
   const displayUrl = photo.src.startsWith("/") ? `${siteUrl}${photo.src}` : photo.src;
-  const description = photo.description?.trim() || `${photo.title} is a ${photo.category.toLowerCase()} photograph by ${photo.photographer}, selected for LUMA by WildSaura.`;
+  const description = photo.seoDescription?.trim() || photo.description?.trim() || `${photo.title} is a ${photo.category.toLowerCase()} photograph by ${photo.photographer}, selected for LUMA by WildSaura.`;
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "ImageObject",
@@ -63,13 +66,15 @@ export default async function PhotoPage({ params }: { params: Promise<{ slug: st
     creator: { "@type": "Person", name: photo.photographer },
     creditText: photo.photographer,
     copyrightNotice: `© ${new Date().getFullYear()} ${photo.photographer}`,
+    license: `${siteUrl}/license`,
     acquireLicensePage: `${siteUrl}/license`,
+    keywords: [...(photo.tags ?? []), ...(photo.keywords ?? [])].join(", "),
   };
 
   return <main className="photo-detail-page">
-    <header><a className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></a><a href="/">Back to gallery ←</a></header>
+    <header><Link className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></Link><Link href="/">Back to gallery ←</Link></header>
     <article>
-      <figure><img src={photo.src} alt={`${photo.title}, photograph by ${photo.photographer}`} /><figcaption>Public preview · Full original reserved for Premium</figcaption></figure>
+      <figure><img src={photo.src} alt={photo.altText || `${photo.title}, photograph by ${photo.photographer}`} /><figcaption>Public preview · Full original reserved for Premium</figcaption></figure>
       <aside>
         <span className="legal-kicker">{photo.category}</span>
         <h1>{photo.title}</h1>
@@ -81,7 +86,7 @@ export default async function PhotoPage({ params }: { params: Promise<{ slug: st
           sourceUrl={photo.sourceUrl ?? photo.src}
           watermarked={photo.watermarked === true}
         />
-        <div className="photo-page-meta"><span>Independent photography</span><span>Curated by WildSaura</span><span>Licensed preview</span></div>
+        <div className="photo-page-meta"><span>Independent photography</span><span>Curated by WildSaura</span><span>Licensed preview</span>{(photo.tags ?? []).slice(0, 4).map((tag) => <span key={tag}>{tag}</span>)}</div>
       </aside>
     </article>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />

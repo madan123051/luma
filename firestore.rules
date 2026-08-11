@@ -20,8 +20,41 @@ service cloud.firestore {
         || (signedIn() && resource.data.submitterUid == request.auth.uid);
 
       allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'title', 'slug', 'category', 'description', 'photographerName',
+          'submitterEmail', 'submitterUid', 'storagePath', 'previewPath',
+          'downloadUrl', 'contentType', 'fileSize', 'previewFileSize',
+          'publicVersion', 'status', 'adminNote', 'createdAt', 'reviewedAt',
+          'reviewedBy', 'tags', 'keywords', 'altText', 'seoTitle',
+          'seoDescription', 'aiGenerated'
+        ])
         && request.resource.data.submitterUid == request.auth.uid
         && request.resource.data.submitterEmail == request.auth.token.email
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 140
+        && request.resource.data.slug is string
+        && request.resource.data.slug.size() > 0
+        && request.resource.data.slug.size() <= 110
+        && request.resource.data.category is string
+        && request.resource.data.category.size() > 0
+        && request.resource.data.category.size() <= 50
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 1000
+        && request.resource.data.photographerName is string
+        && request.resource.data.photographerName.size() > 0
+        && request.resource.data.photographerName.size() <= 100
+        && request.resource.data.tags is list
+        && request.resource.data.tags.size() <= 16
+        && request.resource.data.keywords is list
+        && request.resource.data.keywords.size() <= 20
+        && request.resource.data.altText is string
+        && request.resource.data.altText.size() <= 240
+        && request.resource.data.seoTitle is string
+        && request.resource.data.seoTitle.size() <= 70
+        && request.resource.data.seoDescription is string
+        && request.resource.data.seoDescription.size() <= 170
+        && request.resource.data.aiGenerated is bool
         && (
           request.resource.data.status == 'pending'
           || (isAdmin() && request.resource.data.status == 'approved')

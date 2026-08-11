@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import {
   GoogleAuthProvider, browserLocalPersistence, createUserWithEmailAndPassword,
   sendEmailVerification, setPersistence, signInWithEmailAndPassword,
@@ -58,7 +59,7 @@ export function AuthPanel({ purpose }: { purpose: "login" | "submit" | "admin" }
 
   return <main className="auth-page">
     <section className="auth-card">
-      <a className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></a>
+      <Link className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></Link>
       <span className="legal-kicker">{purpose === "admin" ? "Protected workspace" : purpose === "login" ? "Member access" : "Creator access"}</span>
       <h1>{purpose === "admin" ? "Admin sign in." : purpose === "login" ? "Sign in to LUMA." : "Share your work."}</h1>
       <p>{purpose === "admin" ? "Only approved WildSaura admin emails can continue." : purpose === "login" ? "Everyone can continue with Google. Admin accounts are routed to the private dashboard automatically." : "Sign in before sending a photograph for private editorial review."}</p>
@@ -72,7 +73,7 @@ export function AuthPanel({ purpose }: { purpose: "login" | "submit" | "admin" }
       </form>
       {error && <p className="auth-error">{error}</p>}
       {purpose !== "admin" && <button className="auth-switch" onClick={() => setRegister((value) => !value)}>{register ? "Already registered? Sign in" : "New here? Create an account"}</button>}
-      <a className="back-link" href="/">← Back to gallery</a>
+      <Link className="back-link" href="/">← Back to gallery</Link>
     </section>
   </main>;
 }
