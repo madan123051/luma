@@ -250,8 +250,13 @@ footer>div { font-size:12px; }
 .archive-summary-actions { display:flex; align-items:center; justify-content:flex-end; gap:16px; }
 .archive-summary strong { font-size:38px; letter-spacing:-.05em; }
 .archive-summary span,.archive-summary p { margin:0; color:#66645d; font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+.standard-bulk-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
 .bulk-standard-button { display:flex; align-items:center; gap:12px; min-height:42px; border:1px solid var(--ink); border-radius:999px; background:var(--ink); color:white; padding:8px 9px 8px 17px; cursor:pointer; font:inherit; font-size:10px; font-weight:700; letter-spacing:.04em; }
+.bulk-standard-button>span { color:inherit; font-size:inherit; font-weight:inherit; letter-spacing:inherit; text-transform:none; }
 .bulk-standard-button b { display:grid; place-items:center; min-width:26px; height:26px; border-radius:999px; background:var(--accent); color:var(--ink); font-size:11px; font-variant-numeric:tabular-nums; }
+.bulk-standard-button-secondary { background:transparent; color:var(--ink); }
+.bulk-standard-button-secondary:hover { background:#e6e3d8; }
+.bulk-standard-button:focus-visible { outline:2px solid var(--ink); outline-offset:3px; }
 .bulk-standard-button:disabled { cursor:wait; opacity:.65; }
 .all-standards-ready { color:#55720d!important; font-weight:700; }
 .bulk-standard-feedback { display:grid; gap:10px; margin-top:16px; max-width:720px; }
@@ -422,6 +427,7 @@ footer>div { font-size:12px; }
   .archive-summary { align-items:start; }
   .archive-summary-actions { align-items:flex-end; flex-direction:column; }
   .archive-summary p { max-width:145px; line-height:1.5; text-align:right; }
+  .standard-bulk-actions { max-width:300px; }
   .bulk-standard-button { padding-left:13px; }
   .admin-month-group>header h2 { font-size:35px; }
   .review-grid { grid-template-columns:1fr; }

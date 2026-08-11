@@ -25,6 +25,8 @@ type PhotoDetails = {
   seoDescription: string;
 };
 
+type BulkStandardMode = "missing" | "refresh";
+
 const emptyDetails: PhotoDetails = {
   title: "", photographerName: "", category: "", description: "", tags: "",
   keywords: "", altText: "", seoTitle: "", seoDescription: "",
@@ -93,6 +95,7 @@ export function AdminDashboard() {
   const [bulkStandardMessage, setBulkStandardMessage] = useState("");
   const [bulkStandardErrors, setBulkStandardErrors] = useState<string[]>([]);
   const [bulkStandardBusy, setBulkStandardBusy] = useState(false);
+  const [bulkStandardMode, setBulkStandardMode] = useState<BulkStandardMode | null>(null);
   const bulkStandardInFlightRef = useRef(false);
   const [verificationMessage, setVerificationMessage] = useState("");
 
@@ -149,6 +152,11 @@ export function AdminDashboard() {
 
   const missingStandardItems = useMemo(
     () => items.filter((item) => item.status === "approved" && !item.standardDownloadUrl),
+    [items],
+  );
+
+  const approvedStandardItems = useMemo(
+    () => items.filter((item) => item.status === "approved"),
     [items],
   );
 
@@ -255,18 +263,25 @@ export function AdminDashboard() {
     }
   }
 
-  async function buildAllMissingStandards() {
-    if (bulkStandardInFlightRef.current || !missingStandardItems.length) return;
-    const queue = [...missingStandardItems];
+  async function buildStandardBatch(queue: Submission[], mode: BulkStandardMode) {
+    if (bulkStandardInFlightRef.current || !queue.length) return;
     const total = queue.length;
     const failures: string[] = [];
     let completed = 0;
+    const refreshing = mode === "refresh";
 
     bulkStandardInFlightRef.current = true;
     setBulkStandardBusy(true);
+    setBulkStandardMode(mode);
     setBulkStandardMessage("");
     setBulkStandardErrors([]);
-    setBulkStandardProgress({ percent: 0, stage: "preparing", label: `Preparing ${total} Standard ${total === 1 ? "download" : "downloads"}…` });
+    setBulkStandardProgress({
+      percent: 0,
+      stage: "preparing",
+      label: refreshing
+        ? `Refreshing ${total} Standard ${total === 1 ? "download" : "downloads"} with QR links…`
+        : `Preparing ${total} Standard ${total === 1 ? "download" : "downloads"}…`,
+    });
 
     for (const [index, item] of queue.entries()) {
       try {
@@ -296,16 +311,30 @@ export function AdminDashboard() {
     setBulkStandardProgress({
       percent: 100,
       stage: failures.length ? "error" : "complete",
-      label: failures.length ? `Finished with ${failures.length} ${failures.length === 1 ? "photo" : "photos"} needing retry` : "All Standard downloads are ready",
+      label: failures.length
+        ? `Finished with ${failures.length} ${failures.length === 1 ? "photo" : "photos"} needing retry`
+        : refreshing ? "All Standard downloads now include QR links" : "All Standard downloads are ready",
     });
     setBulkStandardMessage(
       failures.length
-        ? `${completed} of ${total} Standard downloads created. Use “Retry missing Standards” to retry the remaining ${failures.length}.`
-        : `${completed} Standard ${completed === 1 ? "download is" : "downloads are"} ready for visitors.`,
+        ? refreshing
+          ? `${completed} of ${total} Standard downloads refreshed with QR links. Use “Refresh all with QR” to retry.`
+          : `${completed} of ${total} Standard downloads created. Use “Retry missing Standards” to retry the remaining ${failures.length}.`
+        : refreshing
+          ? `${completed} Standard ${completed === 1 ? "download now has" : "downloads now have"} a scannable link to its photo page.`
+          : `${completed} Standard ${completed === 1 ? "download is" : "downloads are"} ready for visitors.`,
     );
     setBulkStandardBusy(false);
     bulkStandardInFlightRef.current = false;
     void load().catch(() => {});
+  }
+
+  function buildAllMissingStandards() {
+    return buildStandardBatch([...missingStandardItems], "missing");
+  }
+
+  function refreshAllStandardsWithQr() {
+    return buildStandardBatch([...approvedStandardItems], "refresh");
   }
 
   function choosePhoto(file: File | undefined) {
@@ -495,10 +524,16 @@ export function AdminDashboard() {
             <div className="archive-summary-count"><strong>{visible.length}</strong><span>{filter === "all" ? "total photographs" : `${filter} photographs`}</span></div>
             <div className="archive-summary-actions">
               <p>Grouped by upload month · newest first</p>
-              {missingStandardItems.length ? <button type="button" className="bulk-standard-button" disabled={bulkStandardBusy || busy || standardBusy} onClick={buildAllMissingStandards}>
-                <span>{bulkStandardBusy ? "Creating Standards…" : bulkStandardErrors.length ? "Retry missing Standards" : "Create missing Standards"}</span>
-                <b>{missingStandardItems.length}</b>
-              </button> : <span className="all-standards-ready">✓ All Standard downloads ready</span>}
+              <div className="standard-bulk-actions">
+                {missingStandardItems.length ? <button type="button" className="bulk-standard-button" disabled={bulkStandardBusy || busy || standardBusy} onClick={buildAllMissingStandards}>
+                  <span>{bulkStandardBusy && bulkStandardMode === "missing" ? "Creating Standards…" : bulkStandardErrors.length && bulkStandardMode === "missing" ? "Retry missing Standards" : "Create missing Standards"}</span>
+                  <b>{missingStandardItems.length}</b>
+                </button> : <span className="all-standards-ready">✓ All Standards ready</span>}
+                {approvedStandardItems.length > 0 && <button type="button" className="bulk-standard-button bulk-standard-button-secondary" disabled={bulkStandardBusy || busy || standardBusy} onClick={refreshAllStandardsWithQr} title="Regenerate every approved Standard download with a QR link to its photo page">
+                  <span>{bulkStandardBusy && bulkStandardMode === "refresh" ? "Refreshing with QR…" : "Refresh all with QR"}</span>
+                  <b>{approvedStandardItems.length}</b>
+                </button>}
+              </div>
             </div>
           </div>
           {(bulkStandardProgress || bulkStandardMessage) && <div className="bulk-standard-feedback">

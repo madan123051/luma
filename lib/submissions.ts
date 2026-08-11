@@ -12,6 +12,9 @@ import { db, storage } from "./firebase";
 import { photoSlug } from "./gallery-data";
 import { createPublicPhoto, createStandardPhoto } from "./image-processing";
 
+const SITE_ORIGIN = "https://luma.wildsaura.com";
+const STANDARD_ASSET_VERSION = "standard-free-white-banner-qr-v2";
+
 export type SubmissionStatus = "pending" | "approved" | "rejected";
 
 export type Submission = {
@@ -153,13 +156,15 @@ export async function createSubmission(input: {
   const previewRef = ref(storage, previewPath);
   const standardRef = ref(storage, standardPath);
   const status = input.status ?? "pending";
+  const slug = photoSlug({ title: input.title, photographer: input.photographerName });
+  const canonicalPhotoUrl = `${SITE_ORIGIN}/photo/${slug}`;
   report(5, "preparing", "Preparing the fast gallery preview…");
   const publicPhoto = await createPublicPhoto(input.file, input.photographerName);
   let standardPhoto: Blob | null = null;
   if (status === "approved") {
     report(9, "preparing", "Building the Standard white-banner download…");
     await waitForPaint();
-    standardPhoto = await createStandardPhoto(input.file, input.title, input.photographerName);
+    standardPhoto = await createStandardPhoto(input.file, input.title, input.photographerName, canonicalPhotoUrl);
   }
 
   try {
@@ -179,7 +184,7 @@ export async function createSubmission(input: {
       uploadDefinitions.push({ data: standardPhoto, metadata: {
         contentType: "image/jpeg",
         contentDisposition: `attachment; filename="${safeDownloadFilename(input.title)}-standard-wildsaura.jpg"`,
-        customMetadata: { version: "standard-free-white-banner" },
+        customMetadata: { version: STANDARD_ASSET_VERSION, photoUrl: canonicalPhotoUrl },
       } });
       refs.push(standardRef);
     }
@@ -205,7 +210,7 @@ export async function createSubmission(input: {
     report(97, "saving", status === "approved" ? "Publishing gallery details…" : "Sending details for review…");
     const submissionData: Record<string, unknown> = {
       title: input.title.slice(0, 140),
-      slug: photoSlug({ title: input.title, photographer: input.photographerName }),
+      slug,
       category: input.category.slice(0, 50),
       description: input.description.slice(0, 1000),
       photographerName: input.photographerName.slice(0, 100),
@@ -321,18 +326,20 @@ export async function createStandardDownloadForSubmission(
   };
   const standardPath = item.standardPath || `submissions/${item.submitterUid}/${item.id}/standard.jpg`;
   const standardRef = ref(storage, standardPath);
+  const slug = photoSlug({ title: item.title, photographer: item.photographerName, slug: item.slug });
+  const canonicalPhotoUrl = `${SITE_ORIGIN}/photo/${slug}`;
 
   report(3, "preparing", "Loading the private original…");
   await waitForPaint();
   const original = await getBlob(ref(storage, item.storagePath), 50 * 1024 * 1024);
   report(22, "preparing", "Building the Standard white-banner download…");
   await waitForPaint();
-  const standardPhoto = await createStandardPhoto(original, item.title, item.photographerName);
+  const standardPhoto = await createStandardPhoto(original, item.title, item.photographerName, canonicalPhotoUrl);
   report(35, "uploading", "Uploading the Standard file…");
   const task = uploadBytesResumable(standardRef, standardPhoto, {
     contentType: "image/jpeg",
     contentDisposition: `attachment; filename="${safeDownloadFilename(item.title)}-standard-wildsaura.jpg"`,
-    customMetadata: { version: "standard-free-white-banner" },
+    customMetadata: { version: STANDARD_ASSET_VERSION, photoUrl: canonicalPhotoUrl },
   });
   await uploadPromise(task, (bytesTransferred) => {
     report(35 + (bytesTransferred / Math.max(1, standardPhoto.size)) * 55, "uploading", "Uploading the Standard file…");
