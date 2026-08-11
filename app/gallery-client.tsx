@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { onAuthStateChanged, type User } from "firebase/auth";
+import { Download, Heart, LoaderCircle, Share2, Sparkles } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { photoPath, type Photo } from "@/lib/gallery-data";
 import { PHOTO_CATEGORIES } from "@/lib/ai-metadata";
@@ -283,17 +284,34 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
               <div className="photo-overlay">
                 <div><strong>{photo.title}</strong><span>by {photo.photographer}</span></div>
                 <div className="quick-actions">
-                  <button type="button" data-tooltip={currentStats.likedByCurrentUser ? "Unlike" : "Like"} onClick={() => toggleLike(photo)} className={currentStats.likedByCurrentUser ? "liked" : ""} aria-label={currentStats.likedByCurrentUser ? "Unlike photo" : "Like photo"}><span aria-hidden="true">{currentStats.likedByCurrentUser ? "♥" : "♡"}</span></button>
-                  <button type="button" data-tooltip="Share" onClick={() => share(photo)} aria-label="Share photo"><span aria-hidden="true">↗</span></button>
-                  <button type="button" data-tooltip="Download" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-label="Download compressed copyright photo"><span aria-hidden="true">{downloadingId === photo.id ? "…" : "↓"}</span></button>
+                  <button type="button" data-tooltip={currentStats.likedByCurrentUser ? "Unlike" : "Like"} onClick={() => toggleLike(photo)} className={currentStats.likedByCurrentUser ? "liked" : ""} aria-label={currentStats.likedByCurrentUser ? "Unlike photo" : "Like photo"} aria-pressed={currentStats.likedByCurrentUser}>
+                    <Heart className="interaction-icon" size={18} strokeWidth={1.8} fill={currentStats.likedByCurrentUser ? "currentColor" : "none"} aria-hidden="true" />
+                  </button>
+                  <button type="button" data-tooltip="Share" onClick={() => share(photo)} aria-label="Share photo">
+                    <Share2 className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />
+                  </button>
+                  <button type="button" data-tooltip="Download" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-busy={downloadingId === photo.id} aria-label="Download compressed copyright photo">
+                    {downloadingId === photo.id
+                      ? <LoaderCircle className="interaction-icon is-spinning" size={18} strokeWidth={1.8} aria-hidden="true" />
+                      : <Download className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />}
+                  </button>
                 </div>
               </div>
               <div className="mobile-meta">
                 <button type="button" className="mobile-title" onClick={() => openPhoto(photo)}>{photo.title}<small>by {photo.photographer}</small></button>
                 <div className="mobile-actions">
-                  <button type="button" className={currentStats.likedByCurrentUser ? "liked" : ""} onClick={() => toggleLike(photo)} aria-label={currentStats.likedByCurrentUser ? "Unlike photo" : "Like photo"}><span aria-hidden="true">{currentStats.likedByCurrentUser ? "♥" : "♡"}</span><small>{totalLikes(photo)}</small></button>
-                  <button type="button" onClick={() => share(photo)} aria-label="Share photo"><span aria-hidden="true">↗</span></button>
-                  <button type="button" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-label="Download compressed copyright photo"><span aria-hidden="true">{downloadingId === photo.id ? "…" : "↓"}</span></button>
+                  <button type="button" className={currentStats.likedByCurrentUser ? "liked" : ""} onClick={() => toggleLike(photo)} aria-label={currentStats.likedByCurrentUser ? "Unlike photo" : "Like photo"} aria-pressed={currentStats.likedByCurrentUser}>
+                    <Heart className="interaction-icon" size={18} strokeWidth={1.8} fill={currentStats.likedByCurrentUser ? "currentColor" : "none"} aria-hidden="true" />
+                    <small>{totalLikes(photo)}</small>
+                  </button>
+                  <button type="button" onClick={() => share(photo)} aria-label="Share photo">
+                    <Share2 className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />
+                  </button>
+                  <button type="button" onClick={() => download(photo)} disabled={downloadingId === photo.id} aria-busy={downloadingId === photo.id} aria-label="Download compressed copyright photo">
+                    {downloadingId === photo.id
+                      ? <LoaderCircle className="interaction-icon is-spinning" size={18} strokeWidth={1.8} aria-hidden="true" />
+                      : <Download className="interaction-icon" size={18} strokeWidth={1.8} aria-hidden="true" />}
+                  </button>
                 </div>
               </div>
             </article>;
@@ -324,10 +342,22 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
             {selected.description && <p className="lightbox-description">{selected.description}</p>}
             {!!selected.tags?.length && <div className="lightbox-tags">{selected.tags.slice(0, 6).map((tag) => <span key={tag}>{tag}</span>)}</div>}
             <div className="detail-actions">
-              <button type="button" onClick={() => toggleLike(selected)}><span className="action-symbol" aria-hidden="true">{photoStats(selected).likedByCurrentUser ? "♥" : "♡"}</span><span><strong>{photoStats(selected).likedByCurrentUser ? "Liked" : "Like photograph"}</strong><small>{totalLikes(selected).toLocaleString()} community saves</small></span></button>
-              <button type="button" onClick={() => share(selected)}><span className="action-symbol" aria-hidden="true">↗</span><span><strong>Share photograph</strong><small>{photoStats(selected).sharesCount} recorded shares</small></span></button>
-              <button type="button" onClick={() => download(selected)} disabled={downloadingId === selected.id}><span className="action-symbol" aria-hidden="true">↓</span><span><strong>{downloadingId === selected.id ? "Preparing…" : "Download preview"}</strong><small>Compressed · copyright marked</small></span></button>
-              <a href="/premium"><span className="action-symbol" aria-hidden="true">✦</span><span><strong>Original quality</strong><small>Premium access · coming soon</small></span></a>
+              <button type="button" onClick={() => toggleLike(selected)} className={photoStats(selected).likedByCurrentUser ? "liked" : ""} aria-pressed={photoStats(selected).likedByCurrentUser}>
+                <span className="action-symbol" aria-hidden="true"><Heart size={20} strokeWidth={1.8} fill={photoStats(selected).likedByCurrentUser ? "currentColor" : "none"} /></span>
+                <span><strong>{photoStats(selected).likedByCurrentUser ? "Liked" : "Like photograph"}</strong><small>{totalLikes(selected).toLocaleString()} community saves</small></span>
+              </button>
+              <button type="button" onClick={() => share(selected)}>
+                <span className="action-symbol" aria-hidden="true"><Share2 size={20} strokeWidth={1.8} /></span>
+                <span><strong>Share photograph</strong><small>{photoStats(selected).sharesCount} recorded shares</small></span>
+              </button>
+              <button type="button" onClick={() => download(selected)} disabled={downloadingId === selected.id} aria-busy={downloadingId === selected.id}>
+                <span className="action-symbol" aria-hidden="true">{downloadingId === selected.id ? <LoaderCircle className="is-spinning" size={20} strokeWidth={1.8} /> : <Download size={20} strokeWidth={1.8} />}</span>
+                <span><strong>{downloadingId === selected.id ? "Preparing…" : "Download preview"}</strong><small>Compressed · copyright marked</small></span>
+              </button>
+              <a href="/premium">
+                <span className="action-symbol" aria-hidden="true"><Sparkles size={20} strokeWidth={1.8} /></span>
+                <span><strong>Original quality</strong><small>Premium access · coming soon</small></span>
+              </a>
             </div>
             <div className="comments">
               <h3>Conversation <span>{comments.length}</span></h3>

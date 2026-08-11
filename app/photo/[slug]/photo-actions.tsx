@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Download, LoaderCircle, Share2, Sparkles } from "lucide-react";
 import { downloadPublicPhoto } from "@/lib/image-processing";
 
 export function PhotoActions(props: {
@@ -40,9 +41,18 @@ export function PhotoActions(props: {
   }
 
   return <div className="photo-page-actions">
-    <button type="button" onClick={share}><span className="action-symbol" aria-hidden="true">↗</span><span><strong>Share photograph</strong><small>Clean link with photo preview</small></span></button>
-    <button type="button" onClick={download} disabled={busy}><span className="action-symbol" aria-hidden="true">↓</span><span><strong>{busy ? "Preparing download…" : "Download preview"}</strong><small>Compressed · copyright marked</small></span></button>
-    <a href="/premium"><span className="action-symbol" aria-hidden="true">✦</span><span><strong>Original quality</strong><small>Premium access · coming soon</small></span></a>
+    <button type="button" onClick={share}>
+      <span className="action-symbol" aria-hidden="true"><Share2 size={20} strokeWidth={1.8} /></span>
+      <span><strong>Share photograph</strong><small>Clean link with photo preview</small></span>
+    </button>
+    <button type="button" onClick={download} disabled={busy} aria-busy={busy}>
+      <span className="action-symbol" aria-hidden="true">{busy ? <LoaderCircle className="is-spinning" size={20} strokeWidth={1.8} /> : <Download size={20} strokeWidth={1.8} />}</span>
+      <span><strong>{busy ? "Preparing download…" : "Download preview"}</strong><small>Compressed · copyright marked</small></span>
+    </button>
+    <a href="/premium">
+      <span className="action-symbol" aria-hidden="true"><Sparkles size={20} strokeWidth={1.8} /></span>
+      <span><strong>Original quality</strong><small>Premium access · coming soon</small></span>
+    </a>
     {message && <small role="status">{message}</small>}
   </div>;
 }
