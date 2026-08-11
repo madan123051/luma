@@ -72,7 +72,9 @@ async function fetchApprovedPhotos(): Promise<Photo[]> {
       seoDescription: stringField(fields, "seoDescription"),
       tags: stringArrayField(fields, "tags"),
       keywords: stringArrayField(fields, "keywords"),
-      src: publicVersion ? downloadUrl : `https://luma.wildsaura.com/api/preview?url=${encodeURIComponent(downloadUrl)}`,
+      src: publicVersion
+        ? downloadUrl
+        : `https://luma.wildsaura.com/api/preview?url=${encodeURIComponent(downloadUrl)}&photographer=${encodeURIComponent(photographer)}`,
       sourceUrl: downloadUrl,
       standardUrl: stringField(fields, "standardDownloadUrl") || undefined,
       standardFileSize: integerField(fields, "standardFileSize") || undefined,

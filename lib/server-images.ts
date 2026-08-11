@@ -4,6 +4,7 @@ const MAX_SOURCE_BYTES = 55 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024;
 const MAX_SOCIAL_BYTES = 280 * 1024;
 const allowedHosts = new Set(["firebasestorage.googleapis.com", "storage.googleapis.com"]);
+type StoredImageFilename = "preview.jpg" | "standard.jpg" | "image";
 
 function lumaStorageObject(value: string) {
   const url = new URL(value);
@@ -24,14 +25,22 @@ function lumaStorageObject(value: string) {
     if (!path.startsWith(`${expectedBucket}/`)) throw new Error("Image source is not allowed.");
     objectPath = path.slice(expectedBucket.length + 1);
   }
-  const match = /^submissions\/[^/]+\/[^/]+\/(preview\.jpg|standard\.jpg)$/.exec(objectPath);
+  const match = /^submissions\/[^/]+\/[^/]+\/(preview\.jpg|standard\.jpg|image)$/.exec(objectPath);
   if (!match) throw new Error("Image source is not allowed.");
-  return { url, filename: match[1] as "preview.jpg" | "standard.jpg" };
+  return { url, filename: match[1] as StoredImageFilename };
 }
 
 export function isLumaStoredDerivative(value: string, filename: "preview.jpg" | "standard.jpg") {
   try {
     return lumaStorageObject(value).filename === filename;
+  } catch {
+    return false;
+  }
+}
+
+export function isLumaLegacySource(value: string) {
+  try {
+    return lumaStorageObject(value).filename === "image";
   } catch {
     return false;
   }
@@ -89,17 +98,23 @@ async function resizedPng(source: Buffer, maxEdge: number) {
     .toBuffer({ resolveWithObject: true });
 }
 
-export async function createGalleryPreview(source: Buffer) {
+export async function createGalleryPreview(source: Buffer, photographer?: string) {
   const resized = await resizedPng(source, 1800);
-  return sharp(resized.data)
+  const pipeline = photographer
+    ? sharp(resized.data).composite([{ input: watermarkSvg(resized.info.width, resized.info.height, photographer) }])
+    : sharp(resized.data);
+  return pipeline
     .jpeg({ quality: 78, progressive: true, mozjpeg: true })
     .toBuffer();
 }
 
-export async function createSocialPreview(source: Buffer) {
-  const pipeline = sharp(source, { failOn: "error" })
+export async function createSocialPreview(source: Buffer, photographer?: string) {
+  let pipeline = sharp(source, { failOn: "error" })
     .rotate()
     .resize({ width: 1200, height: 630, fit: "cover", position: "attention" });
+  if (photographer) {
+    pipeline = pipeline.composite([{ input: watermarkSvg(1200, 630, photographer) }]);
+  }
   let output: Buffer = Buffer.alloc(0);
   for (const quality of [70, 60, 50, 42, 34, 28]) {
     output = await pipeline.clone()

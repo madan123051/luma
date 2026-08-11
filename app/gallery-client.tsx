@@ -26,6 +26,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
   const [showAllPhotos, setShowAllPhotos] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
+  const [failedHeroIds, setFailedHeroIds] = useState<string[]>([]);
   const [communityPhotos] = useState<Photo[]>(initialPhotos);
   const [stats, setStats] = useState<Record<string, PhotoStats>>({});
   const [toast, setToast] = useState("");
@@ -125,8 +126,12 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
     const best = ranked.slice(0, Math.min(5, ranked.length));
     if (!best.length) return null;
     const dailyIndex = dayNumber % best.length;
-    return best[dailyIndex];
-  }, [allPhotos, dayNumber, stats]);
+    for (let offset = 0; offset < best.length; offset += 1) {
+      const candidate = best[(dailyIndex + offset) % best.length];
+      if (!failedHeroIds.includes(String(candidate.id))) return candidate;
+    }
+    return null;
+  }, [allPhotos, dayNumber, failedHeroIds, stats]);
 
   function notify(message: string) {
     setToast(message);
@@ -274,15 +279,15 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
       </header>
 
       <section className="hero" id="discover">
-        <div className="hero-layout">
+        <div className={`hero-layout${dailyHero ? "" : " hero-layout-single"}`}>
           <div className="hero-copy">
             <p className="eyebrow">Independent photography. Curated daily.</p>
             <h1>Images worth<br /><em>keeping.</em></h1>
             <p className="hero-deck">A quiet, considered home for original frames—selected by WildSaura and presented with the space they deserve.</p>
           </div>
-          {dailyHero && <figure className="hero-feature">
+          {dailyHero && <figure className="hero-feature" key={dailyHero.id}>
             <button type="button" onClick={() => openPhoto(dailyHero)} aria-label={`Open today's featured photograph, ${dailyHero.title}`}>
-              <img src={dailyHero.src} alt={dailyHero.altText || `${dailyHero.title}, photograph by ${dailyHero.photographer}`} loading="eager" fetchPriority="high" />
+              <img src={dailyHero.src} alt={dailyHero.altText || `${dailyHero.title}, photograph by ${dailyHero.photographer}`} loading="eager" fetchPriority="high" onError={() => setFailedHeroIds((current) => current.includes(String(dailyHero.id)) ? current : [...current, String(dailyHero.id)])} />
             </button>
             <figcaption><span>Daily frame · 01</span><strong>{dailyHero.title}</strong><small>Photograph by {dailyHero.photographer}</small></figcaption>
           </figure>}
