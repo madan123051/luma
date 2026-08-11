@@ -363,8 +363,7 @@ export async function createStandardDownloadForSubmission(
   try {
     await uploadStandard(standardRef, 35, 90, "Uploading the Standard file…");
   } catch (error) {
-    const replacingExisting = Boolean(item.standardPath || item.standardDownloadUrl);
-    if (firebaseErrorCode(error) !== "storage/unauthorized" || !replacingExisting) throw error;
+    if (firebaseErrorCode(error) !== "storage/unauthorized") throw error;
     const currentUser = auth.currentUser;
     if (!currentUser) throw error;
     resolvedStandardPath = `submissions/${currentUser.uid}/luma-standard-${item.id}-${Date.now()}/original`;
