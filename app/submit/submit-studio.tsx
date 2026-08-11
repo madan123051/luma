@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { AuthPanel } from "@/components/auth-panel";
 import { auth, isAdminEmail } from "@/lib/firebase";
@@ -64,7 +65,7 @@ export function SubmitStudio() {
   if (!user) return <AuthPanel purpose="submit" />;
 
   return <main className="studio-page">
-    <header className="studio-header"><a className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></a><div><span>{user.email}</span><button onClick={() => signOut(auth)}>Sign out</button></div></header>
+    <header className="studio-header"><Link className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></Link><div><span>{user.email}</span><button onClick={() => signOut(auth)}>Sign out</button></div></header>
     <section className="studio-hero"><span className="legal-kicker">Creator submission</span><h1>Share your<br /><em>perspective.</em></h1><p>Your work stays private until the WildSaura editorial team approves it.</p></section>
     <div className="studio-grid">
       <form className="submission-form" onSubmit={submit}>

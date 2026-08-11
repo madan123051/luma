@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  collection, deleteDoc, doc, getDocs, limit, query, serverTimestamp, setDoc,
+  collection, deleteDoc, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc,
   updateDoc, where, type DocumentData, type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
@@ -32,6 +32,12 @@ export type Submission = {
   createdAt: Date | null;
   reviewedAt: Date | null;
   reviewedBy: string;
+  tags: string[];
+  keywords: string[];
+  altText: string;
+  seoTitle: string;
+  seoDescription: string;
+  aiGenerated: boolean;
 };
 
 function fromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Submission {
@@ -59,6 +65,12 @@ function fromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Submission
     createdAt: data.createdAt?.toDate?.() ?? null,
     reviewedAt: data.reviewedAt?.toDate?.() ?? null,
     reviewedBy: data.reviewedBy ?? "",
+    tags: Array.isArray(data.tags) ? data.tags.filter((value): value is string => typeof value === "string") : [],
+    keywords: Array.isArray(data.keywords) ? data.keywords.filter((value): value is string => typeof value === "string") : [],
+    altText: data.altText ?? "",
+    seoTitle: data.seoTitle ?? "",
+    seoDescription: data.seoDescription ?? "",
+    aiGenerated: data.aiGenerated === true,
   };
 }
 
@@ -66,6 +78,8 @@ export async function createSubmission(input: {
   file: File; title: string; category: string; description: string;
   photographerName: string; user: { uid: string; email: string };
   status?: "pending" | "approved";
+  tags?: string[]; keywords?: string[]; altText?: string;
+  seoTitle?: string; seoDescription?: string; aiGenerated?: boolean;
 }) {
   const docRef = doc(collection(db, "submissions"));
   const storagePath = `submissions/${input.user.uid}/${docRef.id}/original`;
@@ -107,6 +121,12 @@ export async function createSubmission(input: {
       createdAt: serverTimestamp(),
       reviewedAt: status === "approved" ? serverTimestamp() : null,
       reviewedBy: status === "approved" ? input.user.email : "",
+      tags: (input.tags ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean).slice(0, 16),
+      keywords: (input.keywords ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean).slice(0, 20),
+      altText: input.altText?.trim().slice(0, 240) ?? "",
+      seoTitle: input.seoTitle?.trim().slice(0, 70) ?? "",
+      seoDescription: input.seoDescription?.trim().slice(0, 170) ?? "",
+      aiGenerated: input.aiGenerated === true,
     });
     return docRef.id;
   } catch (error) {
@@ -129,7 +149,7 @@ export async function getApprovedSubmissions() {
 }
 
 export async function getAllSubmissions() {
-  const snapshots = await getDocs(query(collection(db, "submissions"), limit(100)));
+  const snapshots = await getDocs(query(collection(db, "submissions"), orderBy("createdAt", "desc"), limit(500)));
   return snapshots.docs.map(fromSnapshot).sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
 }
 
@@ -147,16 +167,25 @@ export async function updateSubmissionDetails(id: string, input: {
   category: string;
   description: string;
   photographerName: string;
+  tags?: string[];
+  keywords?: string[];
+  altText?: string;
+  seoTitle?: string;
+  seoDescription?: string;
 }) {
   const title = input.title.trim().slice(0, 140);
   const photographerName = input.photographerName.trim().slice(0, 100);
   if (!title || !photographerName || !input.category.trim()) throw new Error("Required photo details are missing.");
   await updateDoc(doc(db, "submissions", id), {
     title,
-    slug: photoSlug({ title, photographer: photographerName }),
     category: input.category.trim().slice(0, 50),
     description: input.description.trim().slice(0, 1000),
     photographerName,
+    tags: (input.tags ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean).slice(0, 16),
+    keywords: (input.keywords ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean).slice(0, 20),
+    altText: input.altText?.trim().slice(0, 240) ?? "",
+    seoTitle: input.seoTitle?.trim().slice(0, 70) ?? "",
+    seoDescription: input.seoDescription?.trim().slice(0, 170) ?? "",
     updatedAt: serverTimestamp(),
   });
 }

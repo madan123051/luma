@@ -2,6 +2,8 @@
 
 const MAX_PUBLIC_BYTES = 4 * 1024 * 1024;
 const MAX_PUBLIC_EDGE = 2600;
+const MAX_AI_BYTES = 1.6 * 1024 * 1024;
+const MAX_AI_EDGE = 1600;
 
 function loadImage(blob: Blob) {
   return new Promise<{ image: HTMLImageElement; objectUrl: string }>((resolve, reject) => {
@@ -23,6 +25,15 @@ function canvasToBlob(canvas: HTMLCanvasElement, quality: number) {
       "image/jpeg",
       quality,
     );
+  });
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("The AI preview could not be read."));
+    reader.onerror = () => reject(new Error("The AI preview could not be read."));
+    reader.readAsDataURL(blob);
   });
 }
 
@@ -73,6 +84,38 @@ export async function createPublicPhoto(source: Blob, credit = "Creator") {
 
   if (!lastBlob) throw new Error("The public image could not be created.");
   return lastBlob;
+}
+
+export async function createAiPhotoDataUrl(source: Blob) {
+  const { image, objectUrl } = await loadImage(source);
+  let lastBlob: Blob | null = null;
+
+  try {
+    for (const edgeFactor of [1, 0.82, 0.68]) {
+      const targetEdge = MAX_AI_EDGE * edgeFactor;
+      const scale = Math.min(1, targetEdge / Math.max(image.naturalWidth, image.naturalHeight));
+      const width = Math.max(1, Math.round(image.naturalWidth * scale));
+      const height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Image analysis is unavailable in this browser.");
+      ctx.fillStyle = "#f4f2e9";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(image, 0, 0, width, height);
+
+      for (const quality of [0.82, 0.72, 0.62]) {
+        lastBlob = await canvasToBlob(canvas, quality);
+        if (lastBlob.size <= MAX_AI_BYTES) return blobToDataUrl(lastBlob);
+      }
+    }
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  if (!lastBlob) throw new Error("The AI preview could not be created.");
+  return blobToDataUrl(lastBlob);
 }
 
 export async function downloadPublicPhoto(input: {
