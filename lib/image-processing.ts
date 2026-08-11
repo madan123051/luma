@@ -79,11 +79,17 @@ function drawStandardBanner(
   bannerHeight: number,
   title: string,
   credit: string,
+  qrCanvas: HTMLCanvasElement,
 ) {
   const padding = Math.max(18, Math.round(width * 0.018));
   const fontSize = Math.max(15, Math.min(30, Math.round(width * 0.012)));
   const copyright = `© ${new Date().getFullYear()} ${credit.trim().toUpperCase() || "CREATOR"} · LUMA.WILDSAURA.COM`;
   const centerY = imageHeight + bannerHeight / 2;
+  const qrPadding = Math.max(10, Math.round(bannerHeight * 0.08));
+  const qrSize = Math.max(64, bannerHeight - qrPadding * 2);
+  const qrX = width - padding - qrSize;
+  const qrY = imageHeight + Math.round((bannerHeight - qrSize) / 2);
+  const contentRight = qrX - Math.max(16, Math.round(padding * 0.65));
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, imageHeight, width, bannerHeight);
@@ -94,13 +100,34 @@ function drawStandardBanner(
   ctx.font = `700 ${fontSize}px Arial, sans-serif`;
   ctx.textAlign = "left";
   ctx.fillStyle = "#11110f";
-  ctx.fillText(fitText(ctx, title || "Untitled photograph", width * 0.43), padding, centerY);
+  ctx.fillText(fitText(ctx, title || "Untitled photograph", width * 0.4), padding, centerY);
 
   ctx.font = `600 ${Math.max(13, Math.round(fontSize * 0.82))}px Arial, sans-serif`;
   ctx.textAlign = "right";
   ctx.fillStyle = "#57564f";
-  ctx.fillText(fitText(ctx, copyright, width * 0.48), width - padding, centerY);
+  ctx.fillText(fitText(ctx, copyright, Math.max(1, contentRight - width * 0.46)), contentRight, centerY);
   ctx.textAlign = "left";
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+  ctx.restore();
+}
+
+async function createPhotoQrCode(photoUrl: string) {
+  const qrCanvas = document.createElement("canvas");
+  try {
+    const QRCode = await import("qrcode");
+    await QRCode.toCanvas(qrCanvas, photoUrl, {
+      width: 768,
+      margin: 2,
+      errorCorrectionLevel: "M",
+      color: { dark: "#11110fff", light: "#ffffffff" },
+    });
+  } catch {
+    throw new Error("The photo QR code could not be created.");
+  }
+  return qrCanvas;
 }
 
 export async function createPublicPhoto(source: Blob, credit = "Creator") {
@@ -136,12 +163,13 @@ export async function createPublicPhoto(source: Blob, credit = "Creator") {
   throw new Error("The gallery preview could not be compressed below 4MB.");
 }
 
-export async function createStandardPhoto(source: Blob, title: string, credit = "Creator") {
+export async function createStandardPhoto(source: Blob, title: string, credit: string, photoUrl: string) {
   const { image, objectUrl } = await loadImage(source);
   let bestUnderLimit: Blob | null = null;
   let lastProcessingError: unknown = null;
 
   try {
+    const qrCanvas = await createPhotoQrCode(photoUrl);
     const sourcePixels = image.naturalWidth * image.naturalHeight;
     const baseScale = Math.min(
       1,
@@ -154,7 +182,7 @@ export async function createStandardPhoto(source: Blob, title: string, credit = 
         const scale = baseScale * scaleFactor;
         const width = Math.max(1, Math.round(image.naturalWidth * scale));
         const imageHeight = Math.max(1, Math.round(image.naturalHeight * scale));
-        const bannerHeight = Math.max(58, Math.min(150, Math.round(width * 0.045)));
+        const bannerHeight = Math.max(96, Math.min(260, Math.round(width * 0.047)));
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = imageHeight + bannerHeight;
@@ -163,7 +191,7 @@ export async function createStandardPhoto(source: Blob, title: string, credit = 
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(image, 0, 0, width, imageHeight);
-        drawStandardBanner(ctx, width, imageHeight, bannerHeight, title, credit);
+        drawStandardBanner(ctx, width, imageHeight, bannerHeight, title, credit, qrCanvas);
 
         const maximumQuality = await canvasToBlob(canvas, 0.98);
         if (maximumQuality.size <= MAX_STANDARD_BYTES) return maximumQuality;
