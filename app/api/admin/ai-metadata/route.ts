@@ -42,6 +42,12 @@ type GatewayResponse = {
   }>;
 };
 
+type GatewayErrorResponse = {
+  error?: {
+    type?: unknown;
+  };
+};
+
 type PhotoMetadata = {
   title: string;
   description: string;
@@ -268,6 +274,34 @@ function parseMetadata(text: string): PhotoMetadata {
   };
 }
 
+function getGatewayToken(request: Request) {
+  // Vercel exposes OIDC in the function request header at runtime. The
+  // environment variable remains useful for local development and builds.
+  return (
+    process.env.AI_GATEWAY_API_KEY?.trim() ||
+    request.headers.get("x-vercel-oidc-token")?.trim() ||
+    process.env.VERCEL_OIDC_TOKEN?.trim() ||
+    ""
+  );
+}
+
+async function gatewayRequestError(response: Response) {
+  if (response.status === 403) {
+    try {
+      const payload = (await response.json()) as GatewayErrorResponse;
+      if (payload.error?.type === "customer_verification_required") {
+        return new RequestError(503, "Activate AI Gateway billing in Vercel to generate metadata.");
+      }
+    } catch {
+      // Use the generic provider error when the response body is unreadable.
+    }
+  }
+  if (response.status === 429) {
+    return new RequestError(503, "AI usage is temporarily limited. Please try again shortly.");
+  }
+  return new RequestError(502, "AI analysis could not be completed.");
+}
+
 export async function POST(request: Request) {
   try {
     await requireVerifiedAdmin(request);
@@ -287,7 +321,7 @@ export async function POST(request: Request) {
     const photographerName = asOptionalText(body.photographerName, "Photographer name", 120);
     const context = asOptionalText(body.context, "Context", 1_500);
 
-    const gatewayToken = (process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN)?.trim();
+    const gatewayToken = getGatewayToken(request);
     if (!gatewayToken) {
       throw new RequestError(503, "AI metadata is not configured yet.");
     }
@@ -335,7 +369,7 @@ export async function POST(request: Request) {
     }
 
     if (!gatewayResponse.ok) {
-      throw new RequestError(502, "AI analysis could not be completed.");
+      throw await gatewayRequestError(gatewayResponse);
     }
 
     let gatewayPayload: GatewayResponse;
