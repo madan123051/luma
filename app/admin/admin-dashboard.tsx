@@ -180,7 +180,7 @@ export function AdminDashboard() {
   };
 
   const missingStandardItems = useMemo(
-    () => items.filter((item) => item.status === "approved" && !item.standardDownloadUrl),
+    () => items.filter((item) => item.status === "approved" && (!item.standardDownloadUrl || !item.standardPath)),
     [items],
   );
 
@@ -188,6 +188,8 @@ export function AdminDashboard() {
     () => items.filter((item) => item.status === "approved"),
     [items],
   );
+
+  const standardRefreshNeedsRetry = bulkStandardMode === "refresh" && bulkStandardErrors.length > 0;
 
   function openSubmission(item: Submission) {
     setSelected(item);
@@ -557,9 +559,9 @@ export function AdminDashboard() {
                 {missingStandardItems.length ? <button type="button" className="bulk-standard-button" disabled={bulkStandardBusy || busy || standardBusy} onClick={buildAllMissingStandards}>
                   <span>{bulkStandardBusy && bulkStandardMode === "missing" ? "Creating Standards…" : bulkStandardErrors.length && bulkStandardMode === "missing" ? "Retry missing Standards" : "Create missing Standards"}</span>
                   <b>{missingStandardItems.length}</b>
-                </button> : <span className="all-standards-ready">✓ All Standards ready</span>}
-                {approvedStandardItems.length > 0 && <button type="button" className="bulk-standard-button bulk-standard-button-secondary" disabled={bulkStandardBusy || busy || standardBusy} onClick={refreshAllStandardsWithQr} title="Regenerate every approved Standard download with a QR link to its photo page">
-                  <span>{bulkStandardBusy && bulkStandardMode === "refresh" ? "Refreshing with QR…" : "Refresh all with QR"}</span>
+                </button> : approvedStandardItems.length > 0 && !bulkStandardBusy && bulkStandardErrors.length === 0 && bulkStandardProgress?.stage !== "error" && <span className="all-standards-ready" role="status">✓ All Standards ready</span>}
+                {standardRefreshNeedsRetry && approvedStandardItems.length > 0 && <button type="button" className="bulk-standard-button bulk-standard-button-secondary" disabled={bulkStandardBusy || busy || standardBusy} onClick={refreshAllStandardsWithQr} title="Retry adding a QR link to every approved Standard download">
+                  <span>{bulkStandardBusy ? "Retrying QR refresh…" : "Retry failed QR refresh"}</span>
                   <b>{approvedStandardItems.length}</b>
                 </button>}
               </div>
