@@ -6,9 +6,9 @@ import {
 } from "firebase/firestore";
 import {
   deleteObject, getBlob, getDownloadURL, ref, uploadBytesResumable,
-  type UploadMetadata, type UploadTask,
+  type StorageReference, type UploadMetadata, type UploadTask,
 } from "firebase/storage";
-import { db, storage } from "./firebase";
+import { auth, db, storage } from "./firebase";
 import { photoSlug } from "./gallery-data";
 import { createPublicPhoto, createStandardPhoto } from "./image-processing";
 
@@ -344,8 +344,13 @@ export async function createStandardDownloadForSubmission(
     contentDisposition: `attachment; filename="${safeDownloadFilename(item.title)}-standard-wildsaura.jpg"`,
     customMetadata: { version: STANDARD_ASSET_VERSION, photoUrl: canonicalPhotoUrl },
   };
-  const uploadStandard = async (fromPercent: number, toPercent: number, label: string) => {
-    const task = uploadBytesResumable(standardRef, standardPhoto, metadata);
+  const uploadStandard = async (
+    targetRef: StorageReference,
+    fromPercent: number,
+    toPercent: number,
+    label: string,
+  ) => {
+    const task = uploadBytesResumable(targetRef, standardPhoto, metadata);
     await uploadPromise(task, (bytesTransferred) => {
       const ratio = bytesTransferred / Math.max(1, standardPhoto.size);
       report(fromPercent + ratio * (toPercent - fromPercent), "uploading", label);
@@ -353,25 +358,33 @@ export async function createStandardDownloadForSubmission(
   };
 
   report(35, "uploading", "Uploading the Standard file…");
+  let resolvedStandardPath = standardPath;
+  let resolvedStandardRef = standardRef;
   try {
-    await uploadStandard(35, 90, "Uploading the Standard file…");
+    await uploadStandard(standardRef, 35, 90, "Uploading the Standard file…");
   } catch (error) {
     const replacingExisting = Boolean(item.standardPath || item.standardDownloadUrl);
     if (firebaseErrorCode(error) !== "storage/unauthorized" || !replacingExisting) throw error;
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw error;
+    resolvedStandardPath = `submissions/${currentUser.uid}/luma-standard-${item.id}-${Date.now()}/original`;
+    resolvedStandardRef = ref(storage, resolvedStandardPath);
     report(91, "uploading", "Installing the refreshed Standard file…");
-    await deleteObject(standardRef);
-    await uploadStandard(91, 98, "Installing the refreshed Standard file…");
+    await uploadStandard(resolvedStandardRef, 91, 98, "Installing the refreshed Standard file…");
   }
   report(99, "saving", "Saving the Standard download link…");
-  const standardDownloadUrl = await getDownloadURL(standardRef);
+  const standardDownloadUrl = await getDownloadURL(resolvedStandardRef);
   await updateDoc(doc(db, "submissions", item.id), {
-    standardPath,
+    standardPath: resolvedStandardPath,
     standardDownloadUrl,
     standardFileSize: standardPhoto.size,
     updatedAt: serverTimestamp(),
   });
+  if (item.standardPath && item.standardPath !== resolvedStandardPath) {
+    void deleteObject(ref(storage, item.standardPath)).catch(() => {});
+  }
   report(100, "complete", "Standard download is ready");
-  return { standardPath, standardDownloadUrl, standardFileSize: standardPhoto.size };
+  return { standardPath: resolvedStandardPath, standardDownloadUrl, standardFileSize: standardPhoto.size };
 }
 
 export async function deleteSubmission(item: Pick<Submission, "id" | "storagePath" | "previewPath" | "standardPath">) {
