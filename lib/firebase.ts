@@ -1,7 +1,14 @@
 "use client";
 
 import { getApp, getApps, initializeApp } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInAnonymously, type User } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  getAuth,
+  onAuthStateChanged,
+  setPersistence,
+  signInAnonymously,
+  type User,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -46,6 +53,7 @@ export async function ensureAuthUser(): Promise<User> {
     });
   });
   if (existing) return existing;
+  await setPersistence(auth, browserLocalPersistence);
   const credential = await signInAnonymously(auth);
   return credential.user;
 }
