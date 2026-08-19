@@ -113,11 +113,11 @@ footer .brand small { color:#c7c5bc; }
 footer>div { font-size:12px; }
 .footer-note { margin-top:18px; }
 .footer-links { display:flex; justify-content:flex-end; gap:12px 22px; flex-wrap:wrap; }
-.modal-backdrop { position:fixed; inset:0; background:rgba(10,10,8,.75); z-index:50; display:grid; place-items:center; padding:2vw; backdrop-filter:blur(5px); }
+.modal-backdrop { position:fixed; inset:0; background:rgba(10,10,8,.75); z-index:50; display:grid; place-items:center; padding:2vw; backdrop-filter:blur(5px); overflow:auto; }
 .lightbox { width:min(1240px,96vw); height:min(790px,92vh); background:var(--paper); display:grid; grid-template-columns:1.5fr .8fr; position:relative; overflow:hidden; }
 .close { position:absolute; right:16px; top:12px; z-index:2; border:0; background:var(--paper); width:38px; height:38px; font-size:26px; cursor:pointer; }
-.lightbox-image { position:relative; min-width:0; min-height:0; background:#1a1a18; display:grid; place-items:center; overflow:hidden; }
-.lightbox-image img { width:100%; height:100%; max-width:100%; max-height:100%; object-fit:contain; object-position:center; display:block; }
+.lightbox-image { position:relative; min-width:0; min-height:0; background:#1a1a18; display:grid; place-items:center; overflow:hidden; padding:clamp(12px,2vw,28px); }
+.lightbox-image img { width:auto; height:auto; max-width:100%; max-height:100%; object-fit:contain; object-position:center; display:block; }
 .lightbox-image span { position:absolute; left:18px; bottom:16px; padding:7px 10px; background:#111b; color:white; font-size:9px; text-transform:uppercase; letter-spacing:.1em; }
 .lightbox aside { padding:70px 34px 30px; overflow:auto; }
 .lightbox h2,.upload-modal h2 { font-size:48px; letter-spacing:-.05em; margin:18px 0 10px; }
@@ -342,8 +342,8 @@ footer>div { font-size:12px; }
 .photo-detail-page>header { height:84px; display:flex; align-items:center; justify-content:space-between; padding:0 3vw; border-bottom:1px solid var(--line); }
 .photo-detail-page>header>a:last-child { font-size:11px; border-bottom:1px solid; }
 .photo-detail-page>article { min-height:calc(100vh - 84px); display:grid; grid-template-columns:minmax(0,1.55fr) minmax(340px,.65fr); }
-.photo-detail-page figure { position:relative; margin:0; min-height:680px; background:#171714; display:grid; place-items:center; overflow:hidden; }
-.photo-detail-page figure img { width:100%; height:100%; max-height:calc(100vh - 84px); object-fit:contain; display:block; }
+.photo-detail-page figure { position:relative; margin:0; min-height:680px; background:#171714; display:grid; place-items:center; overflow:hidden; padding:clamp(12px,2vw,28px); }
+.photo-detail-page figure img { width:auto; height:auto; max-width:100%; max-height:calc(100vh - 84px); object-fit:contain; display:block; }
 .photo-detail-page figcaption { position:absolute; left:20px; bottom:18px; padding:8px 11px; background:#111b; color:white; font-size:9px; text-transform:uppercase; letter-spacing:.1em; }
 .photo-detail-page article>aside { padding:8vw 3vw 55px; overflow:auto; }
 .photo-detail-page h1 { font-size:clamp(52px,5.2vw,92px); line-height:.88; letter-spacing:-.065em; margin:34px 0 18px; }
@@ -425,7 +425,9 @@ footer>div { font-size:12px; }
   .manifesto { grid-template-columns:1fr; gap:80px; }
   footer { grid-template-columns:1fr; gap:35px; }
   .footer-links { justify-content:flex-start; }
-  .lightbox { width:100%; height:min(94dvh,900px); grid-template-columns:1fr; grid-template-rows:minmax(0,65dvh) auto; overflow-y:auto; }
+  .modal-backdrop { display:block; padding:0; }
+  .lightbox { width:100%; min-height:100dvh; height:auto; max-height:none; grid-template-columns:1fr; grid-template-rows:minmax(68dvh,calc(100dvh - 72px)) auto; overflow:visible; }
+  .lightbox-image { padding:12px; }
   .lightbox aside { padding:34px 22px; }
   .lightbox h2 { font-size:36px; }
   .upload-modal { padding:40px 22px 24px; }
@@ -459,8 +461,8 @@ footer>div { font-size:12px; }
   .review-modal { grid-template-columns:1fr; grid-template-rows:45% 55%; }
   .photo-detail-page>header { height:68px; padding:0 4vw; }
   .photo-detail-page>article { min-height:auto; grid-template-columns:1fr; }
-  .photo-detail-page figure { min-height:0; height:min(72dvh,780px); }
-  .photo-detail-page figure img { max-height:none; }
+  .photo-detail-page figure { min-height:0; height:min(86dvh,900px); padding:12px; }
+  .photo-detail-page figure img { max-height:100%; }
   .photo-detail-page article>aside { padding:48px 5vw 70px; }
   .photo-detail-page h1 { font-size:15vw; }
   .detail-actions>*,.photo-page-actions>*:not(small) { min-height:64px; }
