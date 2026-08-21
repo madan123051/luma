@@ -10,7 +10,7 @@
   },
   "auth": {
     "providers": {
-      "anonymous": false,
+      "anonymous": true,
       "emailPassword": true,
       "googleSignIn": {
         "oAuthBrandDisplayName": "LUMA by WildSaura",

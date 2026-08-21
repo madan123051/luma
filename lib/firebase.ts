@@ -1,7 +1,14 @@
 "use client";
 
 import { getApp, getApps, initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  getAuth,
+  onAuthStateChanged,
+  setPersistence,
+  signInAnonymously,
+  type User,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -25,4 +32,28 @@ export const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? "help@wildsa
 
 export function isAdminEmail(email: string | null | undefined) {
   return Boolean(email && adminEmails.includes(email.toLowerCase()));
+}
+
+/** True when the user has a real (non-anonymous) account. */
+export function isRegisteredUser(user: User | null | undefined) {
+  return Boolean(user && !user.isAnonymous);
+}
+
+/**
+ * Ensures there is a Firebase Auth user for interactions that need a uid
+ * (likes, shares). Guests get a durable anonymous session so likes still
+ * save to Firestore without forcing a full sign-in.
+ */
+export async function ensureAuthUser(): Promise<User> {
+  if (auth.currentUser) return auth.currentUser;
+  const existing = await new Promise<User | null>((resolve) => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      unsub();
+      resolve(user);
+    });
+  });
+  if (existing) return existing;
+  await setPersistence(auth, browserLocalPersistence);
+  const credential = await signInAnonymously(auth);
+  return credential.user;
 }

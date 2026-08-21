@@ -4,8 +4,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore }
 import Link from "next/link";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { ChevronDown, ChevronUp, Clock3, Download, Heart, ImageUp, LoaderCircle, Share2, Sparkles } from "lucide-react";
-import { auth } from "@/lib/firebase";
-import { isVideoPhoto, photoPath, type Photo } from "@/lib/gallery-data";
+import { auth, ensureAuthUser, isRegisteredUser } from "@/lib/firebase";
+import { photoPath, type Photo } from "@/lib/gallery-data";
 import { PHOTO_CATEGORIES } from "@/lib/ai-metadata";
 import { downloadPublicPhoto, downloadPublicVideo, downloadStandardPhoto, downloadStandardVideo } from "@/lib/image-processing";
 import {
@@ -139,7 +139,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
   }
 
   function requireSignedIn(action: string) {
-    if (user) return true;
+    if (isRegisteredUser(user)) return true;
     notify(`Sign in to save your ${action}.`);
     window.setTimeout(() => { window.location.href = "/login"; }, 900);
     return false;
@@ -165,19 +165,26 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
   }
 
   async function toggleLike(photo: Photo) {
-    if (!requireSignedIn("like") || !user) return;
     const key = String(photo.id);
     if (interactionBusy === `like-${key}`) return;
     setInteractionBusy(`like-${key}`);
     try {
-      const result = await toggleSavedLike(photo.id, user);
+      // Guests get a durable anonymous Firebase session so likes still persist.
+      const activeUser = user ?? await ensureAuthUser();
+      if (!user) setUser(activeUser);
+      const result = await toggleSavedLike(photo.id, activeUser);
       setStats((current) => ({
         ...current,
         [key]: { ...(current[key] ?? emptyStats), likesCount: result.likesCount, likedByCurrentUser: result.liked },
       }));
       notify(result.liked ? "Like saved" : "Like removed");
-    } catch {
-      notify("Like could not be saved. Please try again.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/auth\/operation-not-allowed|admin-restricted-operation/i.test(message)) {
+        notify("Guest likes are not enabled yet. Please sign in, or enable Anonymous Auth in Firebase.");
+      } else {
+        notify("Like could not be saved. Please try again.");
+      }
     } finally {
       setInteractionBusy("");
     }
@@ -191,13 +198,17 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
         await navigator.clipboard.writeText(data.url);
         notify("Link copied to clipboard");
       }
-      if (user) {
-        const sharesCount = await recordSavedShare(photo.id, user);
+      try {
+        const activeUser = user ?? await ensureAuthUser();
+        if (!user) setUser(activeUser);
+        const sharesCount = await recordSavedShare(photo.id, activeUser);
         const key = String(photo.id);
         setStats((current) => ({
           ...current,
           [key]: { ...(current[key] ?? emptyStats), sharesCount },
         }));
+      } catch {
+        // Share UI still succeeds even if the counter write fails.
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -270,10 +281,10 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
           <a href="#discover">Discover</a>
           <a href="#collections">Collections</a>
           <a href="#about">About</a>
-          <a href="/login">{user ? "My account" : "Sign in"}</a>
+          <a href="/login">{isRegisteredUser(user) ? "My account" : "Sign in"}</a>
           <a href="https://www.wildsaura.com">WildSaura ↗</a>
         </nav>
-        <a className="mobile-account-link" href="/login" aria-label={user ? "Open my account" : "Sign in"}>{user ? "Account" : "Sign in"}</a>
+        <a className="mobile-account-link" href="/login" aria-label={isRegisteredUser(user) ? "Open my account" : "Sign in"}>{isRegisteredUser(user) ? "Account" : "Sign in"}</a>
         <a className="upload-button" href="/submit" aria-label="Share your work">
           <span className="upload-button-copy"><strong>Share your work</strong><small>Submit to LUMA</small></span>
           <span className="upload-button-icon" aria-hidden="true"><ImageUp size={25} strokeWidth={1.8} /></span>
@@ -289,9 +300,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
           </div>
           {dailyHero && <figure className="hero-feature" key={dailyHero.id}>
             <button type="button" onClick={() => openPhoto(dailyHero)} aria-label={`Open today's featured photograph, ${dailyHero.title}`}>
-              {isVideoPhoto(dailyHero)
-                ? <video src={dailyHero.src} poster={dailyHero.posterUrl} muted playsInline autoPlay loop preload="metadata" aria-label={dailyHero.altText || dailyHero.title} onError={() => setFailedHeroIds((current) => current.includes(String(dailyHero.id)) ? current : [...current, String(dailyHero.id)])} />
-                : <img src={dailyHero.src} alt={dailyHero.altText || `${dailyHero.title}, photograph by ${dailyHero.photographer}`} loading="eager" fetchPriority="high" onError={() => setFailedHeroIds((current) => current.includes(String(dailyHero.id)) ? current : [...current, String(dailyHero.id)])} />}
+              <img src={dailyHero.src} alt={dailyHero.altText || `${dailyHero.title}, photograph by ${dailyHero.photographer}`} loading="eager" fetchPriority="high" onError={() => setFailedHeroIds((current) => current.includes(String(dailyHero.id)) ? current : [...current, String(dailyHero.id)])} />
             </button>
             <figcaption><span>Daily frame · 01</span><strong>{dailyHero.title}</strong><small>Photograph by {dailyHero.photographer}</small></figcaption>
           </figure>}
@@ -439,7 +448,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
               <h3>Conversation <span>{comments.length}</span></h3>
               <form onSubmit={addComment}>
                 <label className="sr-only" htmlFor="photo-comment">Add a comment</label>
-                <input id="photo-comment" value={comment} onChange={(event) => setComment(event.target.value)} maxLength={1000} placeholder={user ? "Add a thoughtful comment…" : "Sign in to comment…"} />
+                <input id="photo-comment" value={comment} onChange={(event) => setComment(event.target.value)} maxLength={1000} placeholder={isRegisteredUser(user) ? "Add a thoughtful comment…" : "Sign in to comment…"} />
                 <button disabled={commentBusy}>{commentBusy ? "Saving…" : "Post"}</button>
               </form>
               {comments.map((item) => <p key={item.id}><strong>{item.displayName}</strong>{item.text}</p>)}
