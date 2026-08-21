@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { photoPath } from "@/lib/gallery-data";
+import { isVideoPhoto, photoPath } from "@/lib/gallery-data";
 import { getPhotoBySlug } from "@/lib/public-gallery-server";
 import { PhotoActions } from "./photo-actions";
 
@@ -53,14 +53,15 @@ export default async function PhotoPage({ params }: { params: Promise<{ slug: st
   if (!photo) notFound();
   const canonical = `${siteUrl}${photoPath(photo)}`;
   const displayUrl = photo.src.startsWith("/") ? `${siteUrl}${photo.src}` : photo.src;
-  const description = photo.seoDescription?.trim() || photo.description?.trim() || `${photo.title} is a ${photo.category.toLowerCase()} photograph by ${photo.photographer}, selected for LUMA by WildSaura.`;
+  const video = isVideoPhoto(photo);
+  const description = photo.seoDescription?.trim() || photo.description?.trim() || `${photo.title} is a ${photo.category.toLowerCase()} ${video ? "video clip" : "photograph"} by ${photo.photographer}, selected for LUMA by WildSaura.`;
   const structuredData = {
     "@context": "https://schema.org",
-    "@type": "ImageObject",
+    "@type": video ? "VideoObject" : "ImageObject",
     name: photo.title,
     description,
     contentUrl: displayUrl,
-    thumbnailUrl: displayUrl,
+    thumbnailUrl: photo.posterUrl || displayUrl,
     url: canonical,
     representativeOfPage: true,
     creator: { "@type": "Person", name: photo.photographer },
@@ -69,16 +70,23 @@ export default async function PhotoPage({ params }: { params: Promise<{ slug: st
     license: `${siteUrl}/license`,
     acquireLicensePage: `${siteUrl}/license`,
     keywords: [...(photo.tags ?? []), ...(photo.keywords ?? [])].join(", "),
+    ...(video ? {
+      uploadDate: photo.publishedAt ? new Date(photo.publishedAt).toISOString() : undefined,
+      duration: photo.durationSeconds ? `PT${Math.round(photo.durationSeconds)}S` : undefined,
+      embedUrl: canonical,
+    } : {}),
   };
 
   return <main className="photo-detail-page">
     <header><Link className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></Link><Link href="/">Back to gallery ←</Link></header>
     <article>
-      <figure><img src={photo.src} alt={photo.altText || `${photo.title}, photograph by ${photo.photographer}`} /><figcaption>Public preview · Full original reserved for Premium</figcaption></figure>
+      <figure>{video
+        ? <video src={photo.src} poster={photo.posterUrl} controls playsInline preload="metadata" aria-label={photo.altText || photo.title} />
+        : <img src={photo.src} alt={photo.altText || `${photo.title}, photograph by ${photo.photographer}`} />}<figcaption>{video ? "Watermarked preview · Original reserved for Premium" : "Public preview · Full original reserved for Premium"}</figcaption></figure>
       <aside>
         <span className="legal-kicker">{photo.category}</span>
         <h1>{photo.title}</h1>
-        <p className="photo-byline">Photograph by <strong>{photo.photographer}</strong></p>
+        <p className="photo-byline">{video ? "Video by" : "Photograph by"} <strong>{photo.photographer}</strong></p>
         <p className="photo-description">{description}</p>
         <PhotoActions
           title={photo.title}
@@ -87,6 +95,7 @@ export default async function PhotoPage({ params }: { params: Promise<{ slug: st
           standardUrl={photo.standardUrl}
           standardFileSize={photo.standardFileSize}
           watermarked={photo.watermarked === true}
+          mediaType={video ? "video" : "image"}
         />
         <div className="photo-page-meta"><span>Independent photography</span><span>Curated by WildSaura</span><span>Licensed preview</span>{(photo.tags ?? []).slice(0, 4).map((tag) => <span key={tag}>{tag}</span>)}</div>
       </aside>

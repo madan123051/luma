@@ -11,6 +11,7 @@ import {
 import { auth, db, storage } from "./firebase";
 import { photoSlug } from "./gallery-data";
 import { createPublicPhoto, createStandardPhoto } from "./image-processing";
+import { createPublicVideo, createStandardVideo, isVideoFile } from "./video-processing";
 
 const SITE_ORIGIN = "https://luma.wildsaura.com";
 const STANDARD_ASSET_VERSION = "standard-free-white-banner-qr-v2";
@@ -28,10 +29,14 @@ export type Submission = {
   submitterUid: string;
   storagePath: string;
   previewPath: string;
+  posterPath: string;
+  posterDownloadUrl: string;
   standardPath: string;
   downloadUrl: string;
   standardDownloadUrl: string;
   contentType: string;
+  mediaType: "image" | "video";
+  durationSeconds: number;
   fileSize: number;
   previewFileSize: number;
   standardFileSize: number;
@@ -70,10 +75,14 @@ function fromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Submission
     submitterUid: data.submitterUid ?? "",
     storagePath: data.storagePath ?? "",
     previewPath: data.previewPath ?? data.storagePath ?? "",
+    posterPath: data.posterPath ?? "",
+    posterDownloadUrl: data.posterDownloadUrl ?? "",
     standardPath: data.standardPath ?? "",
     downloadUrl: data.downloadUrl ?? "",
     standardDownloadUrl: data.standardDownloadUrl ?? "",
     contentType: data.contentType ?? "",
+    mediaType: data.mediaType === "video" || String(data.contentType ?? "").startsWith("video/") ? "video" : "image",
+    durationSeconds: Number(data.durationSeconds ?? 0),
     fileSize: data.fileSize ?? 0,
     previewFileSize: data.previewFileSize ?? data.fileSize ?? 0,
     standardFileSize: data.standardFileSize ?? 0,
@@ -122,7 +131,7 @@ function firebaseErrorCode(error: unknown) {
 export function submissionErrorMessage(error: unknown) {
   const code = firebaseErrorCode(error);
   if (code === "storage/unauthorized" || code === "permission-denied") {
-    return "Your account does not have permission to publish this photograph. Verify the signed-in email and try again.";
+    return "Your account does not have permission to publish this media. Verify the signed-in email and try again.";
   }
   if (code === "storage/retry-limit-exceeded") {
     return "The upload timed out. Check the connection and try again.";
@@ -131,7 +140,7 @@ export function submissionErrorMessage(error: unknown) {
     return "Photo storage is temporarily full. Please contact WildSaura support.";
   }
   if (error instanceof Error && !code) return error.message;
-  return "Upload failed. Please check the image and try again.";
+  return "Upload failed. Please check the file and try again.";
 }
 
 export async function createSubmission(input: {
@@ -146,48 +155,72 @@ export async function createSubmission(input: {
     throw new Error("Verify this admin email before publishing, or sign in with its Google account.");
   }
 
+  const video = isVideoFile(input.file);
+  if (!video && !/^image\/(jpeg|png|webp)$/i.test(input.file.type)) {
+    throw new Error("Choose a JPG, PNG or WEBP photograph, or an MP4/WEBM video clip.");
+  }
+  if (video && input.file.size > 300 * 1024 * 1024) {
+    throw new Error("Video clips must be 300MB or smaller.");
+  }
+  if (!video && input.file.size > 50 * 1024 * 1024) {
+    throw new Error("Photographs must be 50MB or smaller.");
+  }
+
   const report = (percent: number, stage: SubmissionProgress["stage"], label: string) => {
     input.onProgress?.({ percent: Math.max(0, Math.min(100, Math.round(percent))), stage, label });
   };
-  report(2, "preparing", "Reading the original photograph…");
+  report(2, "preparing", video ? "Reading the original video clip…" : "Reading the original photograph…");
   await waitForPaint();
 
   const docRef = doc(collection(db, "submissions"));
   const storagePath = `submissions/${input.user.uid}/${docRef.id}/original`;
-  const previewPath = `submissions/${input.user.uid}/${docRef.id}/preview.jpg`;
-  const standardPath = `submissions/${input.user.uid}/${docRef.id}/standard.jpg`;
+  const previewPath = `submissions/${input.user.uid}/${docRef.id}/${video ? "preview.webm" : "preview.jpg"}`;
+  const posterPath = video ? `submissions/${input.user.uid}/${docRef.id}/poster.jpg` : "";
+  const standardPath = `submissions/${input.user.uid}/${docRef.id}/${video ? "standard.webm" : "standard.jpg"}`;
   const objectRef = ref(storage, storagePath);
   const previewRef = ref(storage, previewPath);
+  const posterRef = posterPath ? ref(storage, posterPath) : null;
   const standardRef = ref(storage, standardPath);
   const status = input.status ?? "pending";
   const slug = photoSlug({ title: input.title, photographer: input.photographerName });
   const canonicalPhotoUrl = `${SITE_ORIGIN}/photo/${slug}`;
-  report(5, "preparing", "Preparing the fast gallery preview…");
-  const publicPhoto = await createPublicPhoto(input.file, input.photographerName);
-  let standardPhoto: Blob | null = null;
+  report(5, "preparing", video ? "Adding the LUMA copyright tag and fast video preview…" : "Preparing the fast gallery preview…");
+  const publicAsset = video
+    ? await createPublicVideo(input.file, input.photographerName)
+    : { blob: await createPublicPhoto(input.file, input.photographerName), poster: null, durationSeconds: 0, width: 0, height: 0 };
+  let standardAsset: { blob: Blob; poster: Blob } | null = null;
   if (status === "approved") {
-    report(9, "preparing", "Building the Standard white-banner download…");
+    report(9, "preparing", video ? "Building the watermarked Standard video…" : "Building the Standard white-banner download…");
     await waitForPaint();
-    standardPhoto = await createStandardPhoto(input.file, input.title, input.photographerName, canonicalPhotoUrl);
+    standardAsset = video
+      ? await createStandardVideo(input.file, input.photographerName)
+      : { blob: await createStandardPhoto(input.file, input.title, input.photographerName, canonicalPhotoUrl), poster: null as unknown as Blob };
   }
 
   try {
-    report(15, "uploading", standardPhoto ? "Uploading original, preview and Standard files…" : "Uploading original and preview files…");
+    report(15, "uploading", standardAsset ? "Uploading original, preview, poster and Standard files…" : "Uploading original, poster and preview files…");
     const uploadDefinitions: Array<{ data: Blob; metadata: UploadMetadata }> = [
       { data: input.file, metadata: {
         contentType: input.file.type,
         customMetadata: { originalName: input.file.name.slice(0, 180) },
       } },
-      { data: publicPhoto, metadata: {
-        contentType: "image/jpeg",
+      { data: publicAsset.blob, metadata: {
+        contentType: video ? "video/webm" : "image/jpeg",
         customMetadata: { version: "public-watermarked" },
       } },
     ];
     const refs = [objectRef, previewRef];
-    if (standardPhoto) {
-      uploadDefinitions.push({ data: standardPhoto, metadata: {
+    if (posterRef && publicAsset.poster) {
+      uploadDefinitions.push({ data: publicAsset.poster, metadata: {
         contentType: "image/jpeg",
-        contentDisposition: `attachment; filename="${safeDownloadFilename(input.title)}-standard-wildsaura.jpg"`,
+        customMetadata: { version: "video-poster-watermarked" },
+      } });
+      refs.push(posterRef);
+    }
+    if (standardAsset) {
+      uploadDefinitions.push({ data: standardAsset.blob, metadata: {
+        contentType: video ? "video/webm" : "image/jpeg",
+        contentDisposition: `attachment; filename="${safeDownloadFilename(input.title)}-standard-wildsaura.${video ? "webm" : "jpg"}"`,
         customMetadata: { version: STANDARD_ASSET_VERSION, photoUrl: canonicalPhotoUrl },
       } });
       refs.push(standardRef);
@@ -198,7 +231,7 @@ export async function createSubmission(input: {
     const promises = tasks.map((task, index) => uploadPromise(task, (bytesTransferred) => {
       transferred[index] = bytesTransferred;
       const uploadedBytes = transferred.reduce((total, value) => total + value, 0);
-      report(15 + (uploadedBytes / Math.max(1, totalBytes)) * 77, "uploading", "Uploading photo files…");
+      report(15 + (uploadedBytes / Math.max(1, totalBytes)) * 77, "uploading", video ? "Uploading video files…" : "Uploading photo files…");
     }));
     try {
       await Promise.all(promises);
@@ -210,7 +243,8 @@ export async function createSubmission(input: {
 
     report(94, "saving", "Securing download links…");
     const downloadUrl = await getDownloadURL(previewRef);
-    const standardDownloadUrl = standardPhoto ? await getDownloadURL(standardRef) : "";
+    const posterDownloadUrl = posterRef ? await getDownloadURL(posterRef) : "";
+    const standardDownloadUrl = standardAsset ? await getDownloadURL(standardRef) : "";
     report(97, "saving", status === "approved" ? "Publishing gallery details…" : "Sending details for review…");
     const submissionData: Record<string, unknown> = {
       title: input.title.slice(0, 140),
@@ -222,10 +256,13 @@ export async function createSubmission(input: {
       submitterUid: input.user.uid,
       storagePath,
       previewPath,
+      ...(posterPath ? { posterPath, posterDownloadUrl } : {}),
       downloadUrl,
       contentType: input.file.type,
+      mediaType: video ? "video" : "image",
+      durationSeconds: video ? publicAsset.durationSeconds : 0,
       fileSize: input.file.size,
-      previewFileSize: publicPhoto.size,
+      previewFileSize: publicAsset.blob.size,
       publicVersion: true,
       status,
       adminNote: "",
@@ -239,10 +276,10 @@ export async function createSubmission(input: {
       seoDescription: input.seoDescription?.trim().slice(0, 170) ?? "",
       aiGenerated: input.aiGenerated === true,
     };
-    if (standardPhoto) {
+    if (standardAsset) {
       submissionData.standardPath = standardPath;
       submissionData.standardDownloadUrl = standardDownloadUrl;
-      submissionData.standardFileSize = standardPhoto.size;
+      submissionData.standardFileSize = standardAsset.blob.size;
     }
     await setDoc(docRef, submissionData);
     report(100, "complete", status === "approved" ? "Published successfully" : "Sent for review");
@@ -251,6 +288,7 @@ export async function createSubmission(input: {
     await Promise.all([
       deleteObject(objectRef).catch(() => {}),
       deleteObject(previewRef).catch(() => {}),
+      posterRef ? deleteObject(posterRef).catch(() => {}) : Promise.resolve(),
       deleteObject(standardRef).catch(() => {}),
     ]);
     throw error;
@@ -328,20 +366,23 @@ export async function createStandardDownloadForSubmission(
   const report = (percent: number, stage: SubmissionProgress["stage"], label: string) => {
     onProgress?.({ percent: Math.max(0, Math.min(100, Math.round(percent))), stage, label });
   };
-  const standardPath = item.standardPath || `submissions/${item.submitterUid}/${item.id}/standard.jpg`;
+  const video = item.mediaType === "video" || item.contentType.startsWith("video/");
+  const standardPath = item.standardPath || `submissions/${item.submitterUid}/${item.id}/${video ? "standard.webm" : "standard.jpg"}`;
   const standardRef = ref(storage, standardPath);
   const slug = photoSlug({ title: item.title, photographer: item.photographerName, slug: item.slug });
   const canonicalPhotoUrl = `${SITE_ORIGIN}/photo/${slug}`;
 
   report(3, "preparing", "Loading the private original…");
   await waitForPaint();
-  const original = await getBlob(ref(storage, item.storagePath), 50 * 1024 * 1024);
-  report(22, "preparing", "Building the Standard white-banner download…");
+  const original = await getBlob(ref(storage, item.storagePath), video ? 300 * 1024 * 1024 : 50 * 1024 * 1024);
+  report(22, "preparing", video ? "Building the watermarked Standard video…" : "Building the Standard white-banner download…");
   await waitForPaint();
-  const standardPhoto = await createStandardPhoto(original, item.title, item.photographerName, canonicalPhotoUrl);
+  const standardBlob = video
+    ? (await createStandardVideo(original, item.photographerName)).blob
+    : await createStandardPhoto(original, item.title, item.photographerName, canonicalPhotoUrl);
   const metadata: UploadMetadata = {
-    contentType: "image/jpeg",
-    contentDisposition: `attachment; filename="${safeDownloadFilename(item.title)}-standard-wildsaura.jpg"`,
+    contentType: video ? "video/webm" : "image/jpeg",
+    contentDisposition: `attachment; filename="${safeDownloadFilename(item.title)}-standard-wildsaura.${video ? "webm" : "jpg"}"`,
     customMetadata: { version: STANDARD_ASSET_VERSION, photoUrl: canonicalPhotoUrl },
   };
   const uploadStandard = async (
@@ -350,9 +391,9 @@ export async function createStandardDownloadForSubmission(
     toPercent: number,
     label: string,
   ) => {
-    const task = uploadBytesResumable(targetRef, standardPhoto, metadata);
+    const task = uploadBytesResumable(targetRef, standardBlob, metadata);
     await uploadPromise(task, (bytesTransferred) => {
-      const ratio = bytesTransferred / Math.max(1, standardPhoto.size);
+      const ratio = bytesTransferred / Math.max(1, standardBlob.size);
       report(fromPercent + ratio * (toPercent - fromPercent), "uploading", label);
     });
   };
@@ -378,7 +419,7 @@ export async function createStandardDownloadForSubmission(
     await updateDoc(doc(db, "submissions", item.id), {
       standardPath: resolvedStandardPath,
       standardDownloadUrl,
-      standardFileSize: standardPhoto.size,
+      standardFileSize: standardBlob.size,
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
@@ -391,7 +432,7 @@ export async function createStandardDownloadForSubmission(
     void deleteObject(ref(storage, item.standardPath)).catch(() => {});
   }
   report(100, "complete", "Standard download is ready");
-  return { standardPath: resolvedStandardPath, standardDownloadUrl, standardFileSize: standardPhoto.size };
+  return { standardPath: resolvedStandardPath, standardDownloadUrl, standardFileSize: standardBlob.size };
 }
 
 export async function repairGalleryPreviewForSubmission(
@@ -400,6 +441,9 @@ export async function repairGalleryPreviewForSubmission(
 ) {
   const currentUser = auth.currentUser;
   if (!currentUser || !item.storagePath) throw new Error("The private original is not available for this photograph.");
+  if (item.mediaType === "video" || item.contentType.startsWith("video/")) {
+    throw new Error("Video previews are generated during upload; use Refresh Standard if the download is missing.");
+  }
   const report = (percent: number, stage: SubmissionProgress["stage"], label: string) => {
     onProgress?.({ percent: Math.max(0, Math.min(100, Math.round(percent))), stage, label });
   };
@@ -445,8 +489,8 @@ export async function repairGalleryPreviewForSubmission(
   }
 }
 
-export async function deleteSubmission(item: Pick<Submission, "id" | "storagePath" | "previewPath" | "standardPath">) {
-  const paths = [...new Set([item.storagePath, item.previewPath, item.standardPath].filter(Boolean))];
+export async function deleteSubmission(item: Pick<Submission, "id" | "storagePath" | "previewPath" | "posterPath" | "standardPath">) {
+  const paths = [...new Set([item.storagePath, item.previewPath, item.posterPath, item.standardPath].filter(Boolean))];
   await Promise.all(paths.map(async (path) => {
     try {
       await deleteObject(ref(storage, path));

@@ -25,6 +25,7 @@ service cloud.firestore {
           'submitterEmail', 'submitterUid', 'storagePath', 'previewPath',
           'standardPath', 'downloadUrl', 'standardDownloadUrl',
           'contentType', 'fileSize', 'previewFileSize', 'standardFileSize',
+          'mediaType', 'durationSeconds', 'posterPath', 'posterDownloadUrl',
           'publicVersion', 'status', 'adminNote', 'createdAt', 'reviewedAt',
           'reviewedBy', 'tags', 'keywords', 'altText', 'seoTitle',
           'seoDescription', 'aiGenerated'
@@ -61,9 +62,29 @@ service cloud.firestore {
           || (isAdmin() && request.resource.data.status == 'approved')
         )
         && request.resource.data.storagePath == 'submissions/' + request.auth.uid + '/' + submissionId + '/original'
-        && request.resource.data.previewPath == 'submissions/' + request.auth.uid + '/' + submissionId + '/preview.jpg'
-        && request.resource.data.fileSize <= 50 * 1024 * 1024
-        && request.resource.data.previewFileSize <= 4 * 1024 * 1024
+        && request.resource.data.mediaType is string
+        && request.resource.data.mediaType in ['image', 'video']
+        && request.resource.data.durationSeconds is number
+        && (
+          (request.resource.data.mediaType == 'image'
+            && request.resource.data.contentType.matches('image/(jpeg|png|webp)')
+            && request.resource.data.durationSeconds == 0
+            && request.resource.data.fileSize <= 50 * 1024 * 1024
+            && request.resource.data.previewFileSize <= 4 * 1024 * 1024
+            && request.resource.data.previewPath == 'submissions/' + request.auth.uid + '/' + submissionId + '/preview.jpg'
+            && !request.resource.data.keys().hasAny(['posterPath', 'posterDownloadUrl']))
+          || (request.resource.data.mediaType == 'video'
+            && request.resource.data.contentType.matches('video/.*')
+            && request.resource.data.durationSeconds >= 10
+            && request.resource.data.durationSeconds <= 30
+            && request.resource.data.fileSize <= 300 * 1024 * 1024
+            && request.resource.data.previewFileSize <= 50 * 1024 * 1024
+            && request.resource.data.previewPath == 'submissions/' + request.auth.uid + '/' + submissionId + '/preview.webm'
+            && request.resource.data.posterPath == 'submissions/' + request.auth.uid + '/' + submissionId + '/poster.jpg'
+            && request.resource.data.posterDownloadUrl is string
+            && request.resource.data.posterDownloadUrl.size() > 0
+            && request.resource.data.posterDownloadUrl.size() <= 2048)
+        )
         && (
           !request.resource.data.keys().hasAny([
             'standardPath', 'standardDownloadUrl', 'standardFileSize'
@@ -73,12 +94,15 @@ service cloud.firestore {
             && request.resource.data.keys().hasAll([
               'standardPath', 'standardDownloadUrl', 'standardFileSize'
             ])
-            && request.resource.data.standardPath == 'submissions/' + request.auth.uid + '/' + submissionId + '/standard.jpg'
             && request.resource.data.standardDownloadUrl is string
             && request.resource.data.standardDownloadUrl.size() > 0
             && request.resource.data.standardDownloadUrl.size() <= 2048
             && request.resource.data.standardFileSize > 0
-            && request.resource.data.standardFileSize <= 10 * 1024 * 1024
+            && request.resource.data.standardFileSize <= 25 * 1024 * 1024
+            && (
+              (request.resource.data.mediaType == 'image' && request.resource.data.standardPath == 'submissions/' + request.auth.uid + '/' + submissionId + '/standard.jpg')
+              || (request.resource.data.mediaType == 'video' && request.resource.data.standardPath == 'submissions/' + request.auth.uid + '/' + submissionId + '/standard.webm')
+            )
           )
         )
         && request.resource.data.publicVersion == true;

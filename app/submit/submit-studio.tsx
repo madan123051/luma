@@ -5,11 +5,16 @@ import Link from "next/link";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { AuthPanel } from "@/components/auth-panel";
 import { UploadProgress } from "@/components/upload-progress";
+import { isVideoFile, validateVideoClip } from "@/lib/video-processing";
 import { auth, isAdminEmail } from "@/lib/firebase";
 import {
   createSubmission, getMySubmissions, submissionErrorMessage,
   type Submission, type SubmissionProgress,
 } from "@/lib/submissions";
+
+function selectedFilenameIsVideo(value: string) {
+  return /\.(mp4|webm|mov|m4v)$/i.test(value);
+}
 
 export function SubmitStudio() {
   const [user, setUser] = useState<User | null>(null);
@@ -42,12 +47,15 @@ export function SubmitStudio() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (uploadInFlightRef.current) return;
-    if (!user?.email) return setMessage("Sign in before uploading a photograph.");
+    if (!user?.email) return setMessage("Sign in before uploading a photograph or video clip.");
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const file = form.get("photo");
-    if (!(file instanceof File) || file.size === 0) return setMessage("Please select a photograph.");
-    if (file.size > 50 * 1024 * 1024) return setMessage("Image must be 50MB or smaller.");
+    if (!(file instanceof File) || file.size === 0) return setMessage("Please select a photograph or video clip.");
+    if (isVideoFile(file)) {
+      if (file.size > 300 * 1024 * 1024) return setMessage("Video clips must be 300MB or smaller.");
+      try { await validateVideoClip(file); } catch (error) { return setMessage(error instanceof Error ? error.message : "Video clips must be between 10 and 30 seconds."); }
+    } else if (file.size > 50 * 1024 * 1024) return setMessage("Photographs must be 50MB or smaller.");
     uploadInFlightRef.current = true;
     setBusy(true); setMessage("");
     setUploadProgress({ percent: 1, stage: "preparing", label: "Starting secure upload…" });
@@ -64,7 +72,7 @@ export function SubmitStudio() {
       formElement.reset();
       setSelectedFileName("");
       setSelectedPreviewUrl("");
-      setMessage("Submitted successfully. Your photograph is private and waiting for admin review.");
+      setMessage("Submitted successfully. Your media is private and waiting for admin review.");
       void load(user).catch(() => setMessage("Submitted successfully. Refresh this page to see the new submission."));
     } catch (error) {
       const errorMessage = submissionErrorMessage(error);
@@ -85,16 +93,18 @@ export function SubmitStudio() {
     <div className="studio-grid">
       <form className="submission-form" onSubmit={submit}>
         <label className="dropzone large">
-          <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event) => {
+          <input name="photo" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" required onChange={(event) => {
             const file = event.target.files?.[0];
             setSelectedFileName(file?.name ?? "");
             setSelectedPreviewUrl(file ? URL.createObjectURL(file) : "");
             setUploadProgress(null);
             setMessage("");
           }} />
-          {selectedPreviewUrl && <img className="selected-thumbnail" src={selectedPreviewUrl} alt="Selected photograph preview" />}
-          <b>{selectedFileName ? "Photograph selected" : "Select your photograph"}</b>
-          <span className={selectedFileName ? "selected-file" : ""}>{selectedFileName || "Tap or click here · JPG, PNG or WEBP · maximum 50MB"}</span>
+          {selectedPreviewUrl && (selectedFilenameIsVideo(selectedFileName)
+            ? <video className="selected-thumbnail" src={selectedPreviewUrl} muted playsInline controls aria-label="Selected video clip preview" />
+            : <img className="selected-thumbnail" src={selectedPreviewUrl} alt="Selected photograph preview" />)}
+          <b>{selectedFileName ? (selectedFileName.match(/\.(mp4|webm|mov)$/i) ? "Video clip selected" : "Photograph selected") : "Select a photograph or video"}</b>
+          <span className={selectedFileName ? "selected-file" : ""}>{selectedFileName || "Tap or click here · JPG, PNG or WEBP · MP4 or WEBM · video 10–30 sec"}</span>
         </label>
         <div className="form-pair"><label>Photograph title<input name="title" maxLength={140} required /></label><label>Photographer name<input name="photographerName" defaultValue={user.displayName ?? ""} maxLength={100} required /></label></div>
         <label>Category<select name="category" required defaultValue=""><option value="" disabled>Choose one</option>{["Nature","People","Architecture","Travel","Street","Fashion","Food","Interiors","Wildlife","Birds","Landscapes"].map((c)=><option key={c}>{c}</option>)}</select></label>

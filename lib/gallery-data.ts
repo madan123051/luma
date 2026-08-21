@@ -12,14 +12,24 @@ export type Photo = {
   slug?: string;
   src: string;
   sourceUrl?: string;
+  posterUrl?: string;
   standardUrl?: string;
   standardFileSize?: number;
+  mediaType?: "image" | "video";
+  durationSeconds?: number;
   height: "tall" | "wide" | "standard";
   likes: number;
   watermarked?: boolean;
   source?: "curated" | "community";
   publishedAt?: Date | string | null;
 };
+
+export function isVideoPhoto(photo: Pick<Photo, "mediaType" | "sourceUrl" | "src">) {
+  return photo.mediaType === "video"
+    || photo.sourceUrl?.toLowerCase().includes(".webm") === true
+    || photo.sourceUrl?.toLowerCase().includes("video") === true
+    || photo.src.toLowerCase().includes(".webm");
+}
 
 export function slugify(value: string) {
   return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")

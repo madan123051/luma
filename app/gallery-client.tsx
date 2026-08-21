@@ -5,9 +5,9 @@ import Link from "next/link";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { ChevronDown, ChevronUp, Clock3, Download, Heart, ImageUp, LoaderCircle, Share2, Sparkles } from "lucide-react";
 import { auth } from "@/lib/firebase";
-import { photoPath, type Photo } from "@/lib/gallery-data";
+import { isVideoPhoto, photoPath, type Photo } from "@/lib/gallery-data";
 import { PHOTO_CATEGORIES } from "@/lib/ai-metadata";
-import { downloadPublicPhoto, downloadStandardPhoto } from "@/lib/image-processing";
+import { downloadPublicPhoto, downloadPublicVideo, downloadStandardPhoto, downloadStandardVideo } from "@/lib/image-processing";
 import {
   addPhotoComment, getPhotoComments, getPhotoStats, recordSavedShare,
   toggleSavedLike, type PhotoComment, type PhotoStats,
@@ -212,12 +212,13 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
   async function downloadPreview(photo: Photo) {
     setDownloading({ id: photo.id, tier: "preview" });
     try {
-      await downloadPublicPhoto({
-        url: photo.sourceUrl ?? photo.src,
-        title: photo.title,
-        photographer: photo.photographer,
-        alreadyWatermarked: photo.watermarked,
-      });
+      if (isVideoPhoto(photo)) await downloadPublicVideo({ url: photo.sourceUrl ?? photo.src, title: photo.title });
+      else await downloadPublicPhoto({
+          url: photo.sourceUrl ?? photo.src,
+          title: photo.title,
+          photographer: photo.photographer,
+          alreadyWatermarked: photo.watermarked,
+        });
       notify("Free Preview download started");
     } catch {
       notify("Preview download could not be prepared. Please try again.");
@@ -233,7 +234,8 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
     }
     setDownloading({ id: photo.id, tier: "standard" });
     try {
-      await downloadStandardPhoto({ standardUrl: photo.standardUrl, title: photo.title });
+      if (isVideoPhoto(photo)) await downloadStandardVideo({ standardUrl: photo.standardUrl, title: photo.title });
+      else await downloadStandardPhoto({ standardUrl: photo.standardUrl, title: photo.title });
       notify("Standard Size download started");
     } catch {
       notify("Standard Size download could not be started. Please try again.");
@@ -287,7 +289,9 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
           </div>
           {dailyHero && <figure className="hero-feature" key={dailyHero.id}>
             <button type="button" onClick={() => openPhoto(dailyHero)} aria-label={`Open today's featured photograph, ${dailyHero.title}`}>
-              <img src={dailyHero.src} alt={dailyHero.altText || `${dailyHero.title}, photograph by ${dailyHero.photographer}`} loading="eager" fetchPriority="high" onError={() => setFailedHeroIds((current) => current.includes(String(dailyHero.id)) ? current : [...current, String(dailyHero.id)])} />
+              {isVideoPhoto(dailyHero)
+                ? <video src={dailyHero.src} poster={dailyHero.posterUrl} muted playsInline autoPlay loop preload="metadata" aria-label={dailyHero.altText || dailyHero.title} onError={() => setFailedHeroIds((current) => current.includes(String(dailyHero.id)) ? current : [...current, String(dailyHero.id)])} />
+                : <img src={dailyHero.src} alt={dailyHero.altText || `${dailyHero.title}, photograph by ${dailyHero.photographer}`} loading="eager" fetchPriority="high" onError={() => setFailedHeroIds((current) => current.includes(String(dailyHero.id)) ? current : [...current, String(dailyHero.id)])} />}
             </button>
             <figcaption><span>Daily frame · 01</span><strong>{dailyHero.title}</strong><small>Photograph by {dailyHero.photographer}</small></figcaption>
           </figure>}
@@ -317,7 +321,9 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
             const currentStats = photoStats(photo);
             return <article className={`photo-card ${photo.height}`} key={photo.id}>
               <button type="button" className="image-button" onClick={() => openPhoto(photo)} aria-label={`Open ${photo.title}`}>
-                <img src={photo.src} alt={photo.altText || `${photo.title}, photograph by ${photo.photographer}`} loading="lazy" decoding="async" />
+                {isVideoPhoto(photo)
+                  ? <video src={photo.src} poster={photo.posterUrl} muted playsInline loop autoPlay preload="metadata" aria-label={photo.altText || photo.title} />
+                  : <img src={photo.src} alt={photo.altText || `${photo.title}, photograph by ${photo.photographer}`} loading="lazy" decoding="async" />}
               </button>
               <div className="photo-overlay">
                 <div><strong>{photo.title}</strong><span>by {photo.photographer}</span></div>
@@ -391,7 +397,9 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
       {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}>
         <section ref={lightboxRef} className="lightbox" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" aria-labelledby="lightbox-title" role="dialog">
           <button ref={closeRef} type="button" className="close" onClick={() => setSelected(null)} aria-label="Close photograph">×</button>
-          <div className="lightbox-image"><img src={selected.src} alt={selected.altText || selected.title} /><span>Compressed preview · © WildSaura</span></div>
+          <div className="lightbox-image">{isVideoPhoto(selected)
+            ? <video src={selected.src} poster={selected.posterUrl} controls playsInline preload="metadata" aria-label={selected.altText || selected.title} />
+            : <img src={selected.src} alt={selected.altText || selected.title} />}<span>Compressed preview · © WildSaura</span></div>
           <aside>
             <span className="tag">{selected.category}</span>
             <h2 id="lightbox-title">{selected.title}</h2>
