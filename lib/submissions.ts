@@ -489,59 +489,8 @@ export async function repairGalleryPreviewForSubmission(
   }
 }
 
-export async function repairGalleryPreviewForSubmission(
-  item: Submission,
-  onProgress?: (progress: SubmissionProgress) => void,
-) {
-  const currentUser = auth.currentUser;
-  if (!currentUser || !item.storagePath) throw new Error("The private original is not available for this photograph.");
-  const report = (percent: number, stage: SubmissionProgress["stage"], label: string) => {
-    onProgress?.({ percent: Math.max(0, Math.min(100, Math.round(percent))), stage, label });
-  };
-
-  report(5, "preparing", "Loading the legacy original…");
-  await waitForPaint();
-  const original = await getBlob(ref(storage, item.storagePath), 50 * 1024 * 1024);
-  report(28, "preparing", "Building a protected gallery preview…");
-  await waitForPaint();
-  const preview = await createPublicPhoto(original, item.photographerName);
-  const previewPath = `submissions/${currentUser.uid}/${item.id}/preview.jpg`;
-  const previewRef = ref(storage, previewPath);
-
-  // Preview updates are installed as a clean create so current owner-scoped
-  // Firebase rules also support repairing records uploaded by an older account.
-  await deleteObject(previewRef).catch((error) => {
-    if (firebaseErrorCode(error) !== "storage/object-not-found") throw error;
-  });
-  report(40, "uploading", "Installing the repaired gallery preview…");
-  const task = uploadBytesResumable(previewRef, preview, {
-    contentType: "image/jpeg",
-    customMetadata: { version: "public-watermarked-repair" },
-  });
-  await uploadPromise(task, (bytesTransferred) => {
-    report(40 + (bytesTransferred / Math.max(1, preview.size)) * 50, "uploading", "Installing the repaired gallery preview…");
-  });
-
-  report(94, "saving", "Saving the repaired thumbnail…");
-  try {
-    const downloadUrl = await getDownloadURL(previewRef);
-    await updateDoc(doc(db, "submissions", item.id), {
-      previewPath,
-      downloadUrl,
-      previewFileSize: preview.size,
-      publicVersion: true,
-      updatedAt: serverTimestamp(),
-    });
-    report(100, "complete", "Gallery preview repaired");
-    return { previewPath, downloadUrl, previewFileSize: preview.size, publicVersion: true };
-  } catch (error) {
-    await deleteObject(previewRef).catch(() => {});
-    throw error;
-  }
-}
-
-export async function deleteSubmission(item: Pick<Submission, "id" | "storagePath" | "previewPath" | "standardPath">) {
-  const paths = [...new Set([item.storagePath, item.previewPath, item.standardPath].filter(Boolean))];
+export async function deleteSubmission(item: Pick<Submission, "id" | "storagePath" | "previewPath" | "posterPath" | "standardPath">) {
+  const paths = [...new Set([item.storagePath, item.previewPath, item.posterPath, item.standardPath].filter(Boolean))];
   await Promise.all(paths.map(async (path) => {
     try {
       await deleteObject(ref(storage, path));

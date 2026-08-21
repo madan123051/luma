@@ -5,7 +5,7 @@ import Link from "next/link";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { ChevronDown, ChevronUp, Clock3, Download, Heart, ImageUp, LoaderCircle, Share2, Sparkles } from "lucide-react";
 import { auth, ensureAuthUser, isRegisteredUser } from "@/lib/firebase";
-import { photoPath, type Photo } from "@/lib/gallery-data";
+import { isVideoPhoto, photoPath, type Photo } from "@/lib/gallery-data";
 import { PHOTO_CATEGORIES } from "@/lib/ai-metadata";
 import { downloadPublicPhoto, downloadPublicVideo, downloadStandardPhoto, downloadStandardVideo } from "@/lib/image-processing";
 import {
