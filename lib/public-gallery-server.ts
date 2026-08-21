@@ -3,6 +3,7 @@ import { photoSlug, type Photo } from "./gallery-data";
 type FirestoreValue = {
   stringValue?: string;
   integerValue?: string;
+  doubleValue?: number | string;
   booleanValue?: boolean;
   timestampValue?: string;
   arrayValue?: { values?: Array<{ stringValue?: string }> };
@@ -19,6 +20,10 @@ function stringField(fields: Record<string, FirestoreValue>, key: string) {
 
 function integerField(fields: Record<string, FirestoreValue>, key: string) {
   return Number(fields[key]?.integerValue ?? 0);
+}
+
+function doubleField(fields: Record<string, FirestoreValue>, key: string) {
+  return Number(fields[key]?.doubleValue ?? fields[key]?.integerValue ?? fields[key]?.stringValue ?? 0);
 }
 
 function stringArrayField(fields: Record<string, FirestoreValue>, key: string) {
@@ -60,6 +65,9 @@ async function fetchApprovedPhotos(): Promise<Photo[]> {
     const downloadUrl = stringField(fields, "downloadUrl");
     if (!id || !title || !photographer || !downloadUrl) return [];
     const publicVersion = fields.publicVersion?.booleanValue === true;
+    const contentType = stringField(fields, "contentType");
+    const mediaType = contentType.toLowerCase().startsWith("video/") ? "video" : "image";
+    const posterUrl = stringField(fields, "posterDownloadUrl");
     return [{
       id,
       slug: stringField(fields, "slug") || photoSlug({ title, photographer }),
@@ -76,8 +84,11 @@ async function fetchApprovedPhotos(): Promise<Photo[]> {
         ? downloadUrl
         : `https://luma.wildsaura.com/api/preview?url=${encodeURIComponent(downloadUrl)}&photographer=${encodeURIComponent(photographer)}`,
       sourceUrl: downloadUrl,
+      posterUrl: posterUrl || undefined,
       standardUrl: stringField(fields, "standardDownloadUrl") || undefined,
       standardFileSize: integerField(fields, "standardFileSize") || undefined,
+      mediaType,
+      durationSeconds: mediaType === "video" ? doubleField(fields, "durationSeconds") || undefined : undefined,
       height: "standard",
       likes: integerField(fields, "likesCount"),
       watermarked: publicVersion,

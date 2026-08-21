@@ -19,32 +19,37 @@ service firebase.storage {
         && (
           (
             request.auth.uid == userId
-            && fileName in ['original', 'preview.jpg']
+            && fileName in ['original', 'preview.jpg', 'preview.webm', 'poster.jpg']
           )
           || (
             isAdmin()
-            && fileName == 'standard.jpg'
+            && fileName in ['standard.jpg', 'standard.webm']
             && (
               request.auth.uid == userId
               || firestore.get(/databases/(default)/documents/submissions/$(submissionId)).data.submitterUid == userId
             )
           )
         )
-        && fileName in ['original', 'preview.jpg', 'standard.jpg']
+        && fileName in ['original', 'preview.jpg', 'preview.webm', 'poster.jpg', 'standard.jpg', 'standard.webm']
         && (
-          (fileName == 'original' && request.resource.size <= 50 * 1024 * 1024)
+          (fileName == 'original' && ((request.resource.contentType.matches('image/.*') && request.resource.size <= 50 * 1024 * 1024)
+            || (request.resource.contentType.matches('video/.*') && request.resource.size <= 300 * 1024 * 1024)))
           || (fileName == 'preview.jpg' && request.resource.size <= 4 * 1024 * 1024)
+          || (fileName == 'preview.webm' && request.resource.size <= 50 * 1024 * 1024)
+          || (fileName == 'poster.jpg' && request.resource.size <= 2 * 1024 * 1024)
           || (fileName == 'standard.jpg' && request.resource.size <= 10 * 1024 * 1024)
+          || (fileName == 'standard.webm' && request.resource.size <= 25 * 1024 * 1024)
         )
         && (
-          (fileName == 'original' && request.resource.contentType.matches('image/(jpeg|png|webp)'))
-          || (fileName in ['preview.jpg', 'standard.jpg'] && request.resource.contentType == 'image/jpeg')
+          (fileName == 'original' && (request.resource.contentType.matches('image/(jpeg|png|webp)') || request.resource.contentType.matches('video/.*')))
+          || (fileName in ['preview.jpg', 'poster.jpg', 'standard.jpg'] && request.resource.contentType == 'image/jpeg')
+          || (fileName in ['preview.webm', 'standard.webm'] && request.resource.contentType == 'video/webm')
         );
 
       allow read: if isAdmin()
         || (signedIn() && request.auth.uid == userId)
         || (
-          fileName in ['preview.jpg', 'standard.jpg']
+          fileName in ['preview.jpg', 'preview.webm', 'poster.jpg', 'standard.jpg', 'standard.webm']
           && firestore.get(/databases/(default)/documents/submissions/$(submissionId)).data.status == 'approved'
         );
 
@@ -58,9 +63,9 @@ service firebase.storage {
           )
         );
       allow update: if isAdmin()
-        && fileName == 'standard.jpg'
-        && request.resource.size <= 10 * 1024 * 1024
-        && request.resource.contentType == 'image/jpeg';
+        && fileName in ['standard.jpg', 'standard.webm']
+        && ((fileName == 'standard.jpg' && request.resource.size <= 10 * 1024 * 1024 && request.resource.contentType == 'image/jpeg')
+          || (fileName == 'standard.webm' && request.resource.size <= 25 * 1024 * 1024 && request.resource.contentType == 'video/webm'));
     }
   }
 }

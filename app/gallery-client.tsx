@@ -7,7 +7,7 @@ import { ChevronDown, ChevronUp, Clock3, Download, Heart, ImageUp, LoaderCircle,
 import { auth, ensureAuthUser, isRegisteredUser } from "@/lib/firebase";
 import { photoPath, type Photo } from "@/lib/gallery-data";
 import { PHOTO_CATEGORIES } from "@/lib/ai-metadata";
-import { downloadPublicPhoto, downloadStandardPhoto } from "@/lib/image-processing";
+import { downloadPublicPhoto, downloadPublicVideo, downloadStandardPhoto, downloadStandardVideo } from "@/lib/image-processing";
 import {
   addPhotoComment, getPhotoComments, getPhotoStats, recordSavedShare,
   toggleSavedLike, type PhotoComment, type PhotoStats,
@@ -223,12 +223,13 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
   async function downloadPreview(photo: Photo) {
     setDownloading({ id: photo.id, tier: "preview" });
     try {
-      await downloadPublicPhoto({
-        url: photo.sourceUrl ?? photo.src,
-        title: photo.title,
-        photographer: photo.photographer,
-        alreadyWatermarked: photo.watermarked,
-      });
+      if (isVideoPhoto(photo)) await downloadPublicVideo({ url: photo.sourceUrl ?? photo.src, title: photo.title });
+      else await downloadPublicPhoto({
+          url: photo.sourceUrl ?? photo.src,
+          title: photo.title,
+          photographer: photo.photographer,
+          alreadyWatermarked: photo.watermarked,
+        });
       notify("Free Preview download started");
     } catch {
       notify("Preview download could not be prepared. Please try again.");
@@ -244,7 +245,8 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
     }
     setDownloading({ id: photo.id, tier: "standard" });
     try {
-      await downloadStandardPhoto({ standardUrl: photo.standardUrl, title: photo.title });
+      if (isVideoPhoto(photo)) await downloadStandardVideo({ standardUrl: photo.standardUrl, title: photo.title });
+      else await downloadStandardPhoto({ standardUrl: photo.standardUrl, title: photo.title });
       notify("Standard Size download started");
     } catch {
       notify("Standard Size download could not be started. Please try again.");
@@ -328,7 +330,9 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
             const currentStats = photoStats(photo);
             return <article className={`photo-card ${photo.height}`} key={photo.id}>
               <button type="button" className="image-button" onClick={() => openPhoto(photo)} aria-label={`Open ${photo.title}`}>
-                <img src={photo.src} alt={photo.altText || `${photo.title}, photograph by ${photo.photographer}`} loading="lazy" decoding="async" />
+                {isVideoPhoto(photo)
+                  ? <video src={photo.src} poster={photo.posterUrl} muted playsInline loop autoPlay preload="metadata" aria-label={photo.altText || photo.title} />
+                  : <img src={photo.src} alt={photo.altText || `${photo.title}, photograph by ${photo.photographer}`} loading="lazy" decoding="async" />}
               </button>
               <div className="photo-overlay">
                 <div><strong>{photo.title}</strong><span>by {photo.photographer}</span></div>
@@ -402,7 +406,9 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
       {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}>
         <section ref={lightboxRef} className="lightbox" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" aria-labelledby="lightbox-title" role="dialog">
           <button ref={closeRef} type="button" className="close" onClick={() => setSelected(null)} aria-label="Close photograph">×</button>
-          <div className="lightbox-image"><img src={selected.src} alt={selected.altText || selected.title} /><span>Compressed preview · © WildSaura</span></div>
+          <div className="lightbox-image">{isVideoPhoto(selected)
+            ? <video src={selected.src} poster={selected.posterUrl} controls playsInline preload="metadata" aria-label={selected.altText || selected.title} />
+            : <img src={selected.src} alt={selected.altText || selected.title} />}<span>Compressed preview · © WildSaura</span></div>
           <aside>
             <span className="tag">{selected.category}</span>
             <h2 id="lightbox-title">{selected.title}</h2>

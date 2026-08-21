@@ -301,3 +301,25 @@ export async function downloadStandardPhoto(input: {
   link.click();
   link.remove();
 }
+
+function downloadMediaUrl(url: string, title: string, suffix: string) {
+  const safeTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "luma-media";
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${safeTitle}-${suffix}-wildsaura.webm`;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+export async function downloadPublicVideo(input: { url?: string; title: string }) {
+  if (!input.url) throw new Error("The video preview is not ready.");
+  downloadMediaUrl(input.url, input.title, "preview");
+}
+
+export async function downloadStandardVideo(input: { standardUrl?: string; title: string }) {
+  if (!input.standardUrl) throw new Error("The Standard video is not ready.");
+  downloadMediaUrl(input.standardUrl, input.title, "standard");
+}

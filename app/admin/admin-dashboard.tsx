@@ -8,6 +8,7 @@ import { UploadProgress } from "@/components/upload-progress";
 import { type AiPhotoMetadata, PHOTO_CATEGORIES } from "@/lib/ai-metadata";
 import { auth, isAdminEmail } from "@/lib/firebase";
 import { createAiPhotoDataUrl } from "@/lib/image-processing";
+import { isVideoFile, validateVideoClip } from "@/lib/video-processing";
 import {
   createStandardDownloadForSubmission, createSubmission, deleteSubmission, getAllSubmissions, repairGalleryPreviewForSubmission, reviewSubmission, submissionErrorMessage,
   updateSubmissionDetails, type Submission, type SubmissionProgress, type SubmissionStatus,
@@ -74,6 +75,13 @@ function detailValues(item: Submission): PhotoDetails {
     seoTitle: item.seoTitle,
     seoDescription: item.seoDescription,
   };
+}
+
+function SubmissionMedia({ item, className, controls = false }: { item: Submission; className?: string; controls?: boolean }) {
+  if (item.mediaType === "video") {
+    return <video className={className} src={item.downloadUrl} poster={item.posterDownloadUrl || undefined} controls={controls} muted={!controls} playsInline preload="metadata" aria-label={item.altText || item.title} />;
+  }
+  return <img className={className} src={item.downloadUrl} alt={item.altText || item.title} />;
 }
 
 export function AdminDashboard() {
@@ -399,11 +407,18 @@ export function AdminDashboard() {
     setAiSearchAttributionHtml("");
     setUploadProgress(null);
     setUploadMessage("");
+    if (file && isVideoFile(file)) {
+      void validateVideoClip(file).catch((error) => setUploadMessage(error instanceof Error ? error.message : "Video clips must be between 10 and 30 seconds."));
+    }
   }
 
   async function analyzePhoto() {
     if (!selectedFile || !user) {
       setAiMessage("Select a photograph first.");
+      return;
+    }
+    if (isVideoFile(selectedFile)) {
+      setAiMessage("AI metadata is available for photographs. Add the video title and description manually.");
       return;
     }
     setAiBusy(true);
@@ -465,8 +480,11 @@ export function AdminDashboard() {
     event.preventDefault();
     if (uploadInFlightRef.current) return;
     const form = event.currentTarget;
-    if (!user?.email || !selectedFile) return setUploadMessage("Please select a photograph.");
-    if (selectedFile.size > 50 * 1024 * 1024) return setUploadMessage("Image must be 50MB or smaller.");
+    if (!user?.email || !selectedFile) return setUploadMessage("Please select a photograph or video clip.");
+    if (isVideoFile(selectedFile)) {
+      if (selectedFile.size > 300 * 1024 * 1024) return setUploadMessage("Video clips must be 300MB or smaller.");
+      try { await validateVideoClip(selectedFile); } catch (error) { return setUploadMessage(error instanceof Error ? error.message : "Video clips must be between 10 and 30 seconds."); }
+    } else if (selectedFile.size > 50 * 1024 * 1024) return setUploadMessage("Photographs must be 50MB or smaller.");
     uploadInFlightRef.current = true;
     setBusy(true);
     setUploadMessage("");
@@ -547,11 +565,13 @@ export function AdminDashboard() {
         </div>
         <form className="submission-form admin-publish-form" onSubmit={upload}>
           <label className="dropzone large premium-dropzone">
-            <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event) => choosePhoto(event.target.files?.[0])} />
-            {selectedPreviewUrl && <img className="selected-thumbnail" src={selectedPreviewUrl} alt="Selected photograph preview" />}
+            <input name="photo" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" required onChange={(event) => choosePhoto(event.target.files?.[0])} />
+            {selectedPreviewUrl && (selectedFile && isVideoFile(selectedFile)
+              ? <video className="selected-thumbnail" src={selectedPreviewUrl} muted playsInline controls aria-label="Selected video clip preview" />
+              : <img className="selected-thumbnail" src={selectedPreviewUrl} alt="Selected photograph preview" />)}
             <span className="dropzone-mark">＋</span>
-            <b>{selectedFile ? "Photograph ready" : "Choose a photograph"}</b>
-            <span className={selectedFile ? "selected-file" : ""}>{selectedFile?.name || "JPG, PNG or WEBP · maximum 50MB"}</span>
+            <b>{selectedFile ? (isVideoFile(selectedFile) ? "Video clip ready" : "Photograph ready") : "Choose a photograph or video"}</b>
+            <span className={selectedFile ? "selected-file" : ""}>{selectedFile?.name || "JPG, PNG or WEBP · MP4 or WEBM · photos 50MB · video 300MB · 10–30 sec"}</span>
           </label>
 
           <section className="ai-metadata-card" aria-labelledby="ai-assistant-title">
@@ -566,7 +586,7 @@ export function AdminDashboard() {
           <label>Category<select required value={uploadDetails.category} onChange={(event) => setUploadDetails({ ...uploadDetails, category: event.target.value })}><option value="" disabled>Choose one</option>{PHOTO_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label>
           <label>Story or description<textarea value={uploadDetails.description} onChange={(event) => setUploadDetails({ ...uploadDetails, description: event.target.value })} maxLength={1000} placeholder="Visible story, setting and moment…" /></label>
           <div className="form-pair"><label>Search tags<input value={uploadDetails.tags} onChange={(event) => setUploadDetails({ ...uploadDetails, tags: event.target.value })} placeholder="wildlife, coastal light, japan" /></label><label>SEO phrases<input value={uploadDetails.keywords} onChange={(event) => setUploadDetails({ ...uploadDetails, keywords: event.target.value })} placeholder="natural phrases, comma separated" /></label></div>
-          <label>Accessible image description<input value={uploadDetails.altText} onChange={(event) => setUploadDetails({ ...uploadDetails, altText: event.target.value })} maxLength={240} placeholder="Describe what is visibly present in the photograph" /></label>
+          <label>Accessible media description<input value={uploadDetails.altText} onChange={(event) => setUploadDetails({ ...uploadDetails, altText: event.target.value })} maxLength={240} placeholder="Describe what is visibly present in the photograph or clip" /></label>
           <div className="seo-fields"><span>Search preview</span><label>SEO title<input value={uploadDetails.seoTitle} onChange={(event) => setUploadDetails({ ...uploadDetails, seoTitle: event.target.value })} maxLength={70} /></label><label>SEO description<textarea value={uploadDetails.seoDescription} onChange={(event) => setUploadDetails({ ...uploadDetails, seoDescription: event.target.value })} maxLength={170} /></label></div>
           <button type="submit" className="publish premium-publish" disabled={busy || bulkStandardBusy}>{busy ? `Publishing · ${uploadProgress?.percent ?? 0}%` : "Review complete · publish ↗"}</button>
           <UploadProgress progress={uploadProgress} />
@@ -631,7 +651,7 @@ export function AdminDashboard() {
         <div className="monthly-archive" id="admin-photo-archive">
           {groupedVisible.map((group) => <section className="admin-month-group" key={group.key}>
             <header><div><span>{group.year}</span><h2>{group.month}</h2></div><small>{group.items.length < group.total ? `${group.items.length} of ${group.total} frames` : `${group.total} ${group.total === 1 ? "frame" : "frames"}`}</small></header>
-            <div className="review-grid">{group.items.map((item) => <button type="button" className="review-card" key={item.id} onClick={() => openSubmission(item)}><div className="review-card-image"><img src={item.downloadUrl} alt={item.altText || item.title} />{item.aiGenerated && <span className="ai-card-badge">AI refined</span>}</div><div><span className={`status ${item.status}`}>{item.status}</span><h3>{item.title}</h3><p>{item.photographerName} · {item.category}</p><small>{item.createdAt?.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }) ?? "Just now"}</small></div></button>)}</div>
+            <div className="review-grid">{group.items.map((item) => <button type="button" className="review-card" key={item.id} onClick={() => openSubmission(item)}><div className="review-card-image"><SubmissionMedia item={item} />{item.aiGenerated && <span className="ai-card-badge">AI refined</span>}</div><div><span className={`status ${item.status}`}>{item.status}</span><h3>{item.title}</h3><p>{item.photographerName} · {item.category}{item.mediaType === "video" ? " · video" : ""}</p><small>{item.createdAt?.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }) ?? "Just now"}</small></div></button>)}</div>
           </section>)}
         </div>
         {visible.length > INITIAL_ARCHIVE_CARD_COUNT && <div className="archive-view-controls">
