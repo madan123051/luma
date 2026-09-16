@@ -2,8 +2,9 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { EditorialBadge, ContributorBadge } from "@/components/editorial-badge";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { ChevronDown, ChevronUp, Clock3, Download, Heart, ImageUp, LoaderCircle, Share2, Sparkles } from "lucide-react";
+import { Aperture, ChevronDown, ChevronUp, Clock3, Download, Heart, ImageUp, LoaderCircle, Share2, Sparkles } from "lucide-react";
 import { auth, ensureAuthUser, isRegisteredUser } from "@/lib/firebase";
 import { isVideoPhoto, photoPath, type Photo } from "@/lib/gallery-data";
 import { PHOTO_CATEGORIES } from "@/lib/ai-metadata";
@@ -13,7 +14,7 @@ import {
   toggleSavedLike, type PhotoComment, type PhotoStats,
 } from "@/lib/interactions";
 
-const categories = ["All", ...PHOTO_CATEGORIES];
+const categories = ["LumiShutter Edit", "IrisSnaps", "All", ...PHOTO_CATEGORIES];
 const emptyStats: PhotoStats = { likesCount: 0, sharesCount: 0, likedByCurrentUser: false };
 const INITIAL_GALLERY_SIZE = 6;
 const subscribeToDay = () => () => {};
@@ -109,7 +110,9 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
   }, [selected]);
 
   const filtered = useMemo(() => allPhotos.filter((photo) =>
-    (category === "All" || photo.category === category) &&
+    (category === "All" || (category === "LumiShutter Edit" ? photo.lumiShutterChoice === true
+      : category === "IrisSnaps" ? photo.source === "community" && !photo.lumiShutterChoice
+      : photo.category === category)) &&
     `${photo.title} ${photo.photographer} ${photo.category} ${photo.description ?? ""} ${(photo.tags ?? []).join(" ")}`.toLowerCase().includes(query.toLowerCase())
   ), [allPhotos, category, query]);
 
@@ -296,7 +299,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
           <div className="hero-copy">
             <p className="eyebrow">Independent photography. Curated daily.</p>
             <h1>Images worth<br /><em>keeping.</em></h1>
-            <p className="hero-deck">A quiet, considered home for original frames—selected by WildSaura and presented with the space they deserve.</p>
+            <p className="hero-deck">A quiet, considered home for original frames—selected by WildSaura and presented with the space they deserve. Curated through the LumiShutter vision, where every frame tells an untamed story.</p>
           </div>
           {dailyHero && <figure className="hero-feature" key={dailyHero.id}>
             <button type="button" onClick={() => openPhoto(dailyHero)} aria-label={`Open today's featured photograph, ${dailyHero.title}`}>
@@ -319,11 +322,16 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
       <section className="gallery-section" id="collections">
         <div className="gallery-heading"><div><span className="eyebrow">The latest edit</span><h2>Recently published</h2></div><p>Authentic photographs, newest first. Every frame opens into its own searchable story.</p></div>
         <div className="filter-row">
-          <div className="categories" role="group" aria-label="Photo categories">
-            {categories.map((item) => <button type="button" key={item} aria-pressed={category === item} className={category === item ? "active" : ""} onClick={() => { setCategory(item); setShowAllPhotos(false); }}>{item}</button>)}
+          <div className="categories" role="group" aria-label="Photo collections and categories">
+            {categories.map((item) => <button type="button" key={item} aria-pressed={category === item} className={category === item ? "active" : ""} onClick={() => { setCategory(item); setShowAllPhotos(false); }}>{item === "LumiShutter Edit" && <Sparkles size={13} aria-hidden="true" />}{item === "IrisSnaps" && <Aperture size={13} aria-hidden="true" />}{item}</button>)}
           </div>
-          <span className="result-count">{filtered.length.toString().padStart(2, "0")} photographs</span>
+          <span className="result-count" role="status">{filtered.length.toString().padStart(2, "0")} photographs</span>
         </div>
+
+        <p className="collection-description" aria-live="polite">{category === "LumiShutter Edit"
+          ? "The daily masterclass edit. Handpicked by WildSaura."
+          : category === "IrisSnaps" ? "Raw, candid, and untamed everyday perspective."
+          : "Explore original frames from the LumiShutter edit and IrisSnap community."}</p>
 
         <div className="masonry" id="photo-results">
           {visiblePhotos.map((photo) => {
@@ -333,9 +341,10 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
                 {isVideoPhoto(photo)
                   ? <video src={photo.src} poster={photo.posterUrl} muted playsInline loop autoPlay preload="metadata" aria-label={photo.altText || photo.title} />
                   : <img src={photo.src} alt={photo.altText || `${photo.title}, photograph by ${photo.photographer}`} loading="lazy" decoding="async" />}
+                <EditorialBadge photo={photo} />
               </button>
               <div className="photo-overlay">
-                <div><strong>{photo.title}</strong><span>by {photo.photographer}</span></div>
+                <div><strong>{photo.title}</strong><span>by {photo.photographer} <ContributorBadge photo={photo} /></span></div>
                 <div className="quick-actions">
                   <button type="button" data-tooltip={currentStats.likedByCurrentUser ? "Unlike" : "Like"} onClick={() => toggleLike(photo)} className={currentStats.likedByCurrentUser ? "liked" : ""} aria-label={currentStats.likedByCurrentUser ? "Unlike photo" : "Like photo"} aria-pressed={currentStats.likedByCurrentUser}>
                     <Heart className="interaction-icon" size={18} strokeWidth={1.8} fill={currentStats.likedByCurrentUser ? "currentColor" : "none"} aria-hidden="true" />
@@ -351,7 +360,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
                 </div>
               </div>
               <div className="mobile-meta">
-                <button type="button" className="mobile-title" onClick={() => openPhoto(photo)}>{photo.title}<small>by {photo.photographer}</small></button>
+                <button type="button" className="mobile-title" onClick={() => openPhoto(photo)}>{photo.title}<small>by {photo.photographer} <ContributorBadge photo={photo} /></small></button>
                 <div className="mobile-actions">
                   <button type="button" className={currentStats.likedByCurrentUser ? "liked" : ""} onClick={() => toggleLike(photo)} aria-label={currentStats.likedByCurrentUser ? "Unlike photo" : "Like photo"} aria-pressed={currentStats.likedByCurrentUser}>
                     <Heart className="interaction-icon" size={18} strokeWidth={1.8} fill={currentStats.likedByCurrentUser ? "currentColor" : "none"} aria-hidden="true" />
@@ -398,7 +407,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
       </section>
 
       <footer>
-        <div><Link className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></Link><p className="footer-note">A WildSaura photography project by Madan Shrestha.</p></div>
+        <div><Link className="brand" href="/">LU<span>●</span>MA <small>by WildSaura</small></Link><p className="footer-note">A WildSaura photography project by Madan Shrestha. Powered by LumiShutter &amp; IrisSnap community.</p></div>
         <p>Photography for everyone.<br />© 2026 Wilds Aura. All rights reserved.</p>
         <div className="footer-links"><a href="/terms">Terms</a><a href="/license">Photo License</a><a href="/privacy">Privacy</a><a href="/community">Community</a><a href="/copyright">Copyright</a><a href="/data-deletion">Data Deletion</a><a href="https://www.wildsaura.com">WildSaura ↗</a></div>
       </footer>
@@ -410,9 +419,9 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
             ? <video src={selected.src} poster={selected.posterUrl} controls playsInline preload="metadata" aria-label={selected.altText || selected.title} />
             : <img src={selected.src} alt={selected.altText || selected.title} />}<span>Compressed preview · © WildSaura</span></div>
           <aside>
-            <span className="tag">{selected.category}</span>
+            <span className="tag">{selected.category}</span> <EditorialBadge photo={selected} />
             <h2 id="lightbox-title">{selected.title}</h2>
-            <p>Photograph by <strong>{selected.photographer}</strong></p>
+            <p>Photograph by <strong>{selected.photographer}</strong> <ContributorBadge photo={selected} /></p>
             {selected.description && <p className="lightbox-description">{selected.description}</p>}
             {!!selected.tags?.length && <div className="lightbox-tags">{selected.tags.slice(0, 6).map((tag) => <span key={tag}>{tag}</span>)}</div>}
             <div className="detail-actions">

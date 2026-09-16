@@ -20,6 +20,8 @@ export type Photo = {
   height: "tall" | "wide" | "standard";
   likes: number;
   watermarked?: boolean;
+  lumiShutterChoice?: boolean;
+  irisSnapVerified?: boolean;
   source?: "curated" | "community";
   publishedAt?: Date | string | null;
 };

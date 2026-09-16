@@ -41,6 +41,8 @@ export type Submission = {
   previewFileSize: number;
   standardFileSize: number;
   publicVersion: boolean;
+  lumiShutterChoice: boolean;
+  irisSnapVerified: boolean;
   status: SubmissionStatus;
   adminNote: string;
   createdAt: Date | null;
@@ -87,6 +89,8 @@ function fromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Submission
     previewFileSize: data.previewFileSize ?? data.fileSize ?? 0,
     standardFileSize: data.standardFileSize ?? 0,
     publicVersion: data.publicVersion === true,
+    lumiShutterChoice: data.lumiShutterChoice === true,
+    irisSnapVerified: data.irisSnapVerified === true,
     status: data.status ?? "pending",
     adminNote: data.adminNote ?? "",
     createdAt: data.createdAt?.toDate?.() ?? null,
@@ -308,6 +312,11 @@ export async function getApprovedSubmissions() {
 export async function getAllSubmissions() {
   const snapshots = await getDocs(query(collection(db, "submissions"), orderBy("createdAt", "desc"), limit(500)));
   return snapshots.docs.map(fromSnapshot).sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
+}
+
+// Existing Firestore rules restrict submission updates to administrators.
+export async function updateEditorialSelection(id: string, field: "lumiShutterChoice" | "irisSnapVerified", value: boolean) {
+  await updateDoc(doc(db, "submissions", id), { [field]: value });
 }
 
 export async function reviewSubmission(id: string, status: SubmissionStatus, adminNote: string, adminEmail: string) {

@@ -93,6 +93,8 @@ async function fetchApprovedPhotos(): Promise<Photo[]> {
       likes: integerField(fields, "likesCount"),
       watermarked: publicVersion,
       source: "community",
+      lumiShutterChoice: fields.lumiShutterChoice?.booleanValue === true,
+      irisSnapVerified: fields.irisSnapVerified?.booleanValue === true,
       publishedAt: fields.createdAt?.timestampValue ?? fields.reviewedAt?.timestampValue ?? null,
     } satisfies Photo];
   }).sort((a, b) => {
