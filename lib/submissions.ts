@@ -9,7 +9,7 @@ import {
   type StorageReference, type UploadMetadata, type UploadTask,
 } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
-import { photoSlug } from "./gallery-data";
+import { getEditorialCollection, photoSlug, type EditorialCollection } from "./gallery-data";
 import { createPublicPhoto, createStandardPhoto } from "./image-processing";
 import { createPublicVideo, createStandardVideo, isVideoFile } from "./video-processing";
 
@@ -41,6 +41,7 @@ export type Submission = {
   previewFileSize: number;
   standardFileSize: number;
   publicVersion: boolean;
+  editorialCollection: EditorialCollection;
   lumiShutterChoice: boolean;
   irisSnapVerified: boolean;
   status: SubmissionStatus;
@@ -89,6 +90,7 @@ function fromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Submission
     previewFileSize: data.previewFileSize ?? data.fileSize ?? 0,
     standardFileSize: data.standardFileSize ?? 0,
     publicVersion: data.publicVersion === true,
+    editorialCollection: getEditorialCollection(data),
     lumiShutterChoice: data.lumiShutterChoice === true,
     irisSnapVerified: data.irisSnapVerified === true,
     status: data.status ?? "pending",
@@ -315,7 +317,17 @@ export async function getAllSubmissions() {
 }
 
 // Existing Firestore rules restrict submission updates to administrators.
-export async function updateEditorialSelection(id: string, field: "lumiShutterChoice" | "irisSnapVerified", value: boolean) {
+export async function setEditorialCollection(id: string, editorialCollection: EditorialCollection) {
+  if (!["none", "irissnap", "lumishutter"].includes(editorialCollection)) throw new Error("Invalid photo tag.");
+  await updateDoc(doc(db, "submissions", id), {
+    editorialCollection,
+    lumiShutterChoice: editorialCollection === "lumishutter",
+    // No tag also removes the separately assigned contributor badge.
+    ...(editorialCollection === "none" ? { irisSnapVerified: false } : {}),
+  });
+}
+
+export async function updateEditorialSelection(id: string, field: "irisSnapVerified", value: boolean) {
   await updateDoc(doc(db, "submissions", id), { [field]: value });
 }
 

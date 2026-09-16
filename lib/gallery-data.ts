@@ -1,3 +1,12 @@
+export type EditorialCollection = "none" | "irissnap" | "lumishutter";
+
+// Preserve explicit LumiShutter picks from the first release, but never infer
+// an IrisSnap tag from a submission's community origin or verification badge.
+export function getEditorialCollection(photo: { editorialCollection?: string; lumiShutterChoice?: boolean }): EditorialCollection {
+  if (photo.editorialCollection === "none" || photo.editorialCollection === "irissnap" || photo.editorialCollection === "lumishutter") return photo.editorialCollection;
+  return photo.lumiShutterChoice === true ? "lumishutter" : "none";
+}
+
 export type Photo = {
   id: number | string;
   title: string;
@@ -20,6 +29,7 @@ export type Photo = {
   height: "tall" | "wide" | "standard";
   likes: number;
   watermarked?: boolean;
+  editorialCollection?: EditorialCollection;
   lumiShutterChoice?: boolean;
   irisSnapVerified?: boolean;
   source?: "curated" | "community";

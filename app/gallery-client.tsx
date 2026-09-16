@@ -6,7 +6,7 @@ import { EditorialBadge, ContributorBadge } from "@/components/editorial-badge";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { Aperture, ChevronDown, ChevronUp, Clock3, Download, Heart, ImageUp, LoaderCircle, Share2, Sparkles } from "lucide-react";
 import { auth, ensureAuthUser, isRegisteredUser } from "@/lib/firebase";
-import { isVideoPhoto, photoPath, type Photo } from "@/lib/gallery-data";
+import { getEditorialCollection, isVideoPhoto, photoPath, type Photo } from "@/lib/gallery-data";
 import { PHOTO_CATEGORIES } from "@/lib/ai-metadata";
 import { downloadPublicPhoto, downloadPublicVideo, downloadStandardPhoto, downloadStandardVideo } from "@/lib/image-processing";
 import {
@@ -110,8 +110,8 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
   }, [selected]);
 
   const filtered = useMemo(() => allPhotos.filter((photo) =>
-    (category === "All" || (category === "LumiShutter Edit" ? photo.lumiShutterChoice === true
-      : category === "IrisSnap" ? photo.source === "community" && !photo.lumiShutterChoice
+    (category === "All" || (category === "LumiShutter Edit" ? getEditorialCollection(photo) === "lumishutter"
+      : category === "IrisSnap" ? getEditorialCollection(photo) === "irissnap"
       : photo.category === category)) &&
     `${photo.title} ${photo.photographer} ${photo.category} ${photo.description ?? ""} ${(photo.tags ?? []).join(" ")}`.toLowerCase().includes(query.toLowerCase())
   ), [allPhotos, category, query]);

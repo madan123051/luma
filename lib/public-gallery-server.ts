@@ -1,4 +1,4 @@
-import { photoSlug, type Photo } from "./gallery-data";
+import { getEditorialCollection, photoSlug, type Photo } from "./gallery-data";
 
 type FirestoreValue = {
   stringValue?: string;
@@ -93,6 +93,10 @@ async function fetchApprovedPhotos(): Promise<Photo[]> {
       likes: integerField(fields, "likesCount"),
       watermarked: publicVersion,
       source: "community",
+      editorialCollection: getEditorialCollection({
+        editorialCollection: stringField(fields, "editorialCollection"),
+        lumiShutterChoice: fields.lumiShutterChoice?.booleanValue === true,
+      }),
       lumiShutterChoice: fields.lumiShutterChoice?.booleanValue === true,
       irisSnapVerified: fields.irisSnapVerified?.booleanValue === true,
       publishedAt: fields.createdAt?.timestampValue ?? fields.reviewedAt?.timestampValue ?? null,
