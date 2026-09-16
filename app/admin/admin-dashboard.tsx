@@ -8,11 +8,27 @@ import { UploadProgress } from "@/components/upload-progress";
 import { type AiPhotoMetadata, PHOTO_CATEGORIES } from "@/lib/ai-metadata";
 import { auth, isAdminEmail } from "@/lib/firebase";
 import { createAiPhotoDataUrl } from "@/lib/image-processing";
+import { getEditorialCollection, type EditorialCollection } from "@/lib/gallery-data";
 import { isVideoFile, validateVideoClip } from "@/lib/video-processing";
 import {
   createStandardDownloadForSubmission, createSubmission, deleteSubmission, getAllSubmissions, repairGalleryPreviewForSubmission, reviewSubmission, submissionErrorMessage,
-  updateEditorialSelection, updateSubmissionDetails, type Submission, type SubmissionProgress, type SubmissionStatus,
+  setEditorialCollection, updateEditorialSelection, updateSubmissionDetails, type Submission, type SubmissionProgress, type SubmissionStatus,
 } from "@/lib/submissions";
+
+function PhotoTagSelect({ item, disabled, onChange }: {
+  item: Submission;
+  disabled: boolean;
+  onChange: (item: Submission, value: EditorialCollection) => void;
+}) {
+  return <label className="photo-tag-select">Photo tag
+    <select aria-label={`Photo tag for ${item.title}`} value={getEditorialCollection(item)} disabled={disabled}
+      onChange={(event) => onChange(item, event.target.value as EditorialCollection)}>
+      <option value="none">No tag</option>
+      <option value="irissnap">IrisSnap</option>
+      <option value="lumishutter">LumiShutter</option>
+    </select>
+  </label>;
+}
 
 type PhotoDetails = {
   title: string;
@@ -87,6 +103,7 @@ function SubmissionMedia({ item, className, controls = false }: { item: Submissi
 export function AdminDashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [editorialMessage, setEditorialMessage] = useState("");
   const [items, setItems] = useState<Submission[]>([]);
   const [filter, setFilter] = useState<SubmissionStatus | "all">("all");
   const [archiveDate, setArchiveDate] = useState("");
@@ -213,7 +230,25 @@ export function AdminDashboard() {
     setPreviewMessage("");
   }
 
-  async function toggleEditorial(field: "lumiShutterChoice" | "irisSnapVerified") {
+  async function savePhotoTag(item: Submission, editorialCollection: EditorialCollection) {
+    if (busy || standardBusy || bulkStandardBusy || previewBusy) return;
+    setBusy(true);
+    setEditorialMessage("Saving photo tag…");
+    try {
+      await setEditorialCollection(item.id, editorialCollection);
+      const changes = { editorialCollection, lumiShutterChoice: editorialCollection === "lumishutter",
+        ...(editorialCollection === "none" ? { irisSnapVerified: false } : {}) };
+      setSelected((current) => current?.id === item.id ? { ...current, ...changes } : current);
+      setItems((current) => current.map((photo) => photo.id === item.id ? { ...photo, ...changes } : photo));
+      setEditorialMessage(`Photo tag saved for “${item.title}”. Refresh the gallery to see it; photo detail pages may take up to five minutes.`);
+    } catch (error) {
+      setEditorialMessage(submissionErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleEditorial(field: "irisSnapVerified") {
     if (!selected) return;
     const value = !selected[field];
     setBusy(true);
@@ -668,7 +703,7 @@ export function AdminDashboard() {
         <div className="monthly-archive" id="admin-photo-archive">
           {groupedVisible.map((group) => <section className="admin-month-group" key={group.key}>
             <header><div><span>{group.year}</span><h2>{group.month}</h2></div><small>{group.items.length < group.total ? `${group.items.length} of ${group.total} frames` : `${group.total} ${group.total === 1 ? "frame" : "frames"}`}</small></header>
-            <div className="review-grid">{group.items.map((item) => <button type="button" className="review-card" key={item.id} onClick={() => openSubmission(item)}><div className="review-card-image"><SubmissionMedia item={item} />{item.aiGenerated && <span className="ai-card-badge">AI refined</span>}</div><div><span className={`status ${item.status}`}>{item.status}</span><h3>{item.title}</h3><p>{item.photographerName} · {item.category}{item.mediaType === "video" ? " · video" : ""}</p><small>{item.createdAt?.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }) ?? "Just now"}</small></div></button>)}</div>
+            <div className="review-grid">{group.items.map((item) => <article className="review-card" key={item.id}><button type="button" className="review-card-open" onClick={() => openSubmission(item)}><div className="review-card-image"><SubmissionMedia item={item} />{item.aiGenerated && <span className="ai-card-badge">AI refined</span>}</div><div><span className={`status ${item.status}`}>{item.status}</span><h3>{item.title}</h3><p>{item.photographerName} · {item.category}{item.mediaType === "video" ? " · video" : ""}</p><small>{item.createdAt?.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }) ?? "Just now"}</small></div></button><PhotoTagSelect item={item} disabled={busy || standardBusy || bulkStandardBusy || previewBusy} onChange={savePhotoTag} /></article>)}</div>
           </section>)}
         </div>
         {visible.length > INITIAL_ARCHIVE_CARD_COUNT && <div className="archive-view-controls">
@@ -685,13 +720,17 @@ export function AdminDashboard() {
         </div>}
         {!visible.length && <div className="empty">Nothing in this archive.</div>}
       </>}
+    {editorialMessage && <p className="editorial-save-message" role="status">{editorialMessage}</p>}
     </section>
 
-    {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}><section className="review-modal" onMouseDown={(event) => event.stopPropagation()}><button type="button" className="close" onClick={() => setSelected(null)} aria-label="Close photo editor">×</button><div className="review-image"><img src={selected.downloadUrl} alt={selected.altText || selected.title} /></div><aside><span className="tag">{selected.category}</span>{editing ? <form className="edit-submission-form" onSubmit={saveDetails}><label>Photograph title<input required maxLength={140} value={editValues.title} onChange={(event) => setEditValues({ ...editValues, title: event.target.value })} /></label><label>Photographer name<input required maxLength={100} value={editValues.photographerName} onChange={(event) => setEditValues({ ...editValues, photographerName: event.target.value })} /></label><label>Category<select required value={editValues.category} onChange={(event) => setEditValues({ ...editValues, category: event.target.value })}>{PHOTO_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label><label>Description<textarea maxLength={1000} value={editValues.description} onChange={(event) => setEditValues({ ...editValues, description: event.target.value })} /></label><label>Tags<input value={editValues.tags} onChange={(event) => setEditValues({ ...editValues, tags: event.target.value })} /></label><label>SEO phrases<input value={editValues.keywords} onChange={(event) => setEditValues({ ...editValues, keywords: event.target.value })} /></label><label>Alt text<textarea maxLength={240} value={editValues.altText} onChange={(event) => setEditValues({ ...editValues, altText: event.target.value })} /></label><label>SEO title<input maxLength={70} value={editValues.seoTitle} onChange={(event) => setEditValues({ ...editValues, seoTitle: event.target.value })} /></label><label>SEO description<textarea maxLength={170} value={editValues.seoDescription} onChange={(event) => setEditValues({ ...editValues, seoDescription: event.target.value })} /></label><div className="edit-form-actions"><button type="button" onClick={() => setEditing(false)}>Cancel</button><button disabled={busy || bulkStandardBusy || previewBusy}>{busy ? "Saving…" : "Save changes"}</button></div></form> : <><h2>{selected.title}</h2><p>By <b>{selected.photographerName}</b><br />{selected.submitterEmail}</p><p className="review-story">{selected.description || "No description provided."}</p>{selected.tags.length > 0 && <div className="admin-tag-list">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}<fieldset className="editorial-controls" disabled={busy || standardBusy || bulkStandardBusy || previewBusy}>
-      <legend>Editorial collection &amp; contributor badge</legend>
-      <label><input type="checkbox" checked={selected.lumiShutterChoice} onChange={() => toggleEditorial("lumiShutterChoice")} /> LumiShutter Choice — handpicked edit</label>
-      <label><input type="checkbox" checked={selected.irisSnapVerified} onChange={() => toggleEditorial("irisSnapVerified")} /> IrisSnap — reviewed contributor for this frame</label>
-      <p>Unselected community frames appear in IrisSnaps. Only approved submissions are public.</p>
+    {selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}><section className="review-modal" onMouseDown={(event) => event.stopPropagation()}><button type="button" className="close" onClick={() => setSelected(null)} aria-label="Close photo editor">×</button><div className="review-image"><img src={selected.downloadUrl} alt={selected.altText || selected.title} /></div><aside><span className="tag">{selected.category}</span>
+      <PhotoTagSelect item={selected} disabled={busy || standardBusy || bulkStandardBusy || previewBusy} onChange={savePhotoTag} />
+      <p className="editorial-help">Choose No tag to hide badges. Changes save automatically. Only approved photos appear publicly.</p>
+      {editorialMessage && <p className="editorial-save-message" role="status">{editorialMessage}</p>}
+      {editing ? <form className="edit-submission-form" onSubmit={saveDetails}><label>Photograph title<input required maxLength={140} value={editValues.title} onChange={(event) => setEditValues({ ...editValues, title: event.target.value })} /></label><label>Photographer name<input required maxLength={100} value={editValues.photographerName} onChange={(event) => setEditValues({ ...editValues, photographerName: event.target.value })} /></label><label>Category<select required value={editValues.category} onChange={(event) => setEditValues({ ...editValues, category: event.target.value })}>{PHOTO_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label><label>Description<textarea maxLength={1000} value={editValues.description} onChange={(event) => setEditValues({ ...editValues, description: event.target.value })} /></label><label>Tags<input value={editValues.tags} onChange={(event) => setEditValues({ ...editValues, tags: event.target.value })} /></label><label>SEO phrases<input value={editValues.keywords} onChange={(event) => setEditValues({ ...editValues, keywords: event.target.value })} /></label><label>Alt text<textarea maxLength={240} value={editValues.altText} onChange={(event) => setEditValues({ ...editValues, altText: event.target.value })} /></label><label>SEO title<input maxLength={70} value={editValues.seoTitle} onChange={(event) => setEditValues({ ...editValues, seoTitle: event.target.value })} /></label><label>SEO description<textarea maxLength={170} value={editValues.seoDescription} onChange={(event) => setEditValues({ ...editValues, seoDescription: event.target.value })} /></label><div className="edit-form-actions"><button type="button" onClick={() => setEditing(false)}>Cancel</button><button disabled={busy || bulkStandardBusy || previewBusy}>{busy ? "Saving…" : "Save changes"}</button></div></form> : <><h2>{selected.title}</h2><p>By <b>{selected.photographerName}</b><br />{selected.submitterEmail}</p><p className="review-story">{selected.description || "No description provided."}</p>{selected.tags.length > 0 && <div className="admin-tag-list">{selected.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}<fieldset className="editorial-controls" disabled={busy || standardBusy || bulkStandardBusy || previewBusy}>
+      <legend>Optional contributor badge</legend>
+      <label><input type="checkbox" disabled={getEditorialCollection(selected) === "none"} checked={selected.irisSnapVerified && getEditorialCollection(selected) !== "none"} onChange={() => toggleEditorial("irisSnapVerified")} /> IrisSnap — reviewed contributor for this frame</label>
+      <p>Select a photo tag above before adding a reviewed-contributor badge.</p>
     </fieldset><div className="submission-manage-actions"><button type="button" disabled={busy || standardBusy || bulkStandardBusy || previewBusy} onClick={() => setEditing(true)}>Edit metadata</button>{(!selected.publicVersion || !selected.previewPath.endsWith("/preview.jpg")) && <button type="button" disabled={busy || standardBusy || bulkStandardBusy || previewBusy} onClick={repairGalleryPreview}>{previewBusy ? `Repairing preview ${previewProgress?.percent ?? 0}%` : "Repair gallery preview"}</button>}<button type="button" disabled={busy || standardBusy || bulkStandardBusy || previewBusy} onClick={buildStandardDownload}>{standardBusy ? `Standard ${standardProgress?.percent ?? 0}%` : selected.standardDownloadUrl ? "Refresh Standard" : "Create Standard"}</button><button type="button" className="danger" disabled={busy || standardBusy || bulkStandardBusy || previewBusy} onClick={removePhoto}>{busy ? "Deleting…" : "Delete permanently"}</button></div><UploadProgress progress={previewProgress} />{previewMessage && <p className="standard-message" role="status">{previewMessage}</p>}<UploadProgress progress={standardProgress} />{standardMessage && <p className="standard-message" role="status">{standardMessage}</p>}<label>Private note<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional feedback for photographer" /></label><div className="review-actions"><button type="button" disabled={busy || standardBusy || bulkStandardBusy || previewBusy} onClick={() => review("rejected")}>Reject</button><button type="button" disabled={busy || standardBusy || bulkStandardBusy || previewBusy} onClick={() => review("pending")}>Keep pending</button><button type="button" disabled={busy || standardBusy || bulkStandardBusy || previewBusy} onClick={() => review("approved")}>Approve & publish ↗</button></div></>}</aside></section></div>}
   </main>;
 }
