@@ -14,7 +14,7 @@ import {
   toggleSavedLike, type PhotoComment, type PhotoStats,
 } from "@/lib/interactions";
 
-const categories = ["LumiShutter Edit", "IrisSnaps", "All", ...PHOTO_CATEGORIES];
+const categories = ["LumiShutter Edit", "IrisSnap", "All", ...PHOTO_CATEGORIES];
 const emptyStats: PhotoStats = { likesCount: 0, sharesCount: 0, likedByCurrentUser: false };
 const INITIAL_GALLERY_SIZE = 6;
 const subscribeToDay = () => () => {};
@@ -111,7 +111,7 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
 
   const filtered = useMemo(() => allPhotos.filter((photo) =>
     (category === "All" || (category === "LumiShutter Edit" ? photo.lumiShutterChoice === true
-      : category === "IrisSnaps" ? photo.source === "community" && !photo.lumiShutterChoice
+      : category === "IrisSnap" ? photo.source === "community" && !photo.lumiShutterChoice
       : photo.category === category)) &&
     `${photo.title} ${photo.photographer} ${photo.category} ${photo.description ?? ""} ${(photo.tags ?? []).join(" ")}`.toLowerCase().includes(query.toLowerCase())
   ), [allPhotos, category, query]);
@@ -323,14 +323,14 @@ export function GalleryClient({ initialPhotos }: { initialPhotos: Photo[] }) {
         <div className="gallery-heading"><div><span className="eyebrow">The latest edit</span><h2>Recently published</h2></div><p>Authentic photographs, newest first. Every frame opens into its own searchable story.</p></div>
         <div className="filter-row">
           <div className="categories" role="group" aria-label="Photo collections and categories">
-            {categories.map((item) => <button type="button" key={item} aria-pressed={category === item} className={category === item ? "active" : ""} onClick={() => { setCategory(item); setShowAllPhotos(false); }}>{item === "LumiShutter Edit" && <Sparkles size={13} aria-hidden="true" />}{item === "IrisSnaps" && <Aperture size={13} aria-hidden="true" />}{item}</button>)}
+            {categories.map((item) => <button type="button" key={item} aria-pressed={category === item} className={category === item ? "active" : ""} onClick={() => { setCategory(item); setShowAllPhotos(false); }}>{item === "LumiShutter Edit" && <Sparkles size={13} aria-hidden="true" />}{item === "IrisSnap" && <Aperture size={13} aria-hidden="true" />}{item}</button>)}
           </div>
           <span className="result-count" role="status">{filtered.length.toString().padStart(2, "0")} photographs</span>
         </div>
 
         <p className="collection-description" aria-live="polite">{category === "LumiShutter Edit"
           ? "The daily masterclass edit. Handpicked by WildSaura."
-          : category === "IrisSnaps" ? "Raw, candid, and untamed everyday perspective."
+          : category === "IrisSnap" ? "Raw, candid, and untamed everyday perspective."
           : "Explore original frames from the LumiShutter edit and IrisSnap community."}</p>
 
         <div className="masonry" id="photo-results">
