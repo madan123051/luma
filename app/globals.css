@@ -489,3 +489,21 @@ footer>div { font-size:12px; }
   .site-header,.quick-actions { backdrop-filter:none; }
 }
 @media(prefers-reduced-motion:reduce) { * { scroll-behavior:auto!important; transition:none!important; } .photo-card:hover,.photo-card:hover img,.hero-feature:hover img,.upload-button:hover { transform:none!important; } .is-spinning { animation:none!important; } }
+
+/* LumiShutter / IrisSnap editorial identity */
+.categories button { display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+.categories button svg { flex-shrink:0; }
+.collection-description { margin:0 0 22px; color:var(--muted); font-size:12px; line-height:1.6; }
+.editorial-badge { display:inline-flex; align-items:center; gap:5px; width:fit-content; max-width:100%; padding:5px 7px; border:1px solid; border-radius:3px; font-size:9px; line-height:1.4; letter-spacing:.09em; font-weight:500; text-transform:uppercase; vertical-align:middle; }
+.editorial-badge svg,.contributor-badge svg { flex-shrink:0; }
+.editorial-choice { background:rgba(17,17,17,.88); color:#fff; border-color:rgba(255,255,255,.25); }
+.editorial-feed { background:rgba(255,255,255,.94); color:#111; border-color:rgba(17,17,17,.18); }
+.image-button { position:relative; }
+.image-button > .editorial-badge { position:absolute; top:12px; left:12px; max-width:calc(100% - 24px); pointer-events:none; z-index:2; }
+.contributor-badge { display:inline-flex!important; align-items:center; gap:4px; width:fit-content; margin-left:5px; padding:2px 5px; border:1px solid currentColor; border-radius:3px; font-size:9px!important; line-height:1.4; font-weight:500; vertical-align:middle; }
+.editorial-controls { margin:18px 0; padding:14px; border:1px solid var(--line); border-radius:8px; }
+.editorial-controls legend { padding:0 5px; font-size:12px; }
+.editorial-controls label { display:flex; align-items:center; gap:8px; font-size:12px; line-height:1.5; }
+.editorial-controls input[type="checkbox"] { width:16px; height:16px; flex-shrink:0; accent-color:var(--ink); }
+.editorial-controls p { font-size:11px; line-height:1.6; color:var(--muted); }
+@media(max-width:600px) { .categories { flex-wrap:wrap; } .categories button { min-height:40px; } .collection-description { font-size:11px; } }

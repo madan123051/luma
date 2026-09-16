@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { EditorialBadge, ContributorBadge } from "@/components/editorial-badge";
 import { isVideoPhoto, photoPath } from "@/lib/gallery-data";
 import { getPhotoBySlug } from "@/lib/public-gallery-server";
 import { PhotoActions } from "./photo-actions";
@@ -84,9 +85,9 @@ export default async function PhotoPage({ params }: { params: Promise<{ slug: st
         ? <video src={photo.src} poster={photo.posterUrl} controls playsInline preload="metadata" aria-label={photo.altText || photo.title} />
         : <img src={photo.src} alt={photo.altText || `${photo.title}, photograph by ${photo.photographer}`} />}<figcaption>{video ? "Watermarked preview · Original reserved for Premium" : "Public preview · Full original reserved for Premium"}</figcaption></figure>
       <aside>
-        <span className="legal-kicker">{photo.category}</span>
+        <span className="legal-kicker">{photo.category}</span> <EditorialBadge photo={photo} />
         <h1>{photo.title}</h1>
-        <p className="photo-byline">{video ? "Video by" : "Photograph by"} <strong>{photo.photographer}</strong></p>
+        <p className="photo-byline">{video ? "Video by" : "Photograph by"} <strong>{photo.photographer}</strong> <ContributorBadge photo={photo} /></p>
         <p className="photo-description">{description}</p>
         <PhotoActions
           title={photo.title}
