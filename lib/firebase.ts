@@ -3,8 +3,11 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   browserLocalPersistence,
+  browserPopupRedirectResolver,
+  indexedDBLocalPersistence,
+  initializeAuth,
   getAuth,
-  onAuthStateChanged,
+  getRedirectResult,
   setPersistence,
   signInAnonymously,
   type User,
@@ -23,7 +26,57 @@ const firebaseConfig = {
 };
 
 export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
-export const auth = getAuth(firebaseApp);
+function createAuth() {
+  // Next.js prerenders client modules on the server; browser persistence is unavailable there.
+  if (typeof window === "undefined") return getAuth(firebaseApp);
+  try {
+    return initializeAuth(firebaseApp, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch (error) {
+    if ((error as { code?: string }).code === "auth/already-initialized") return getAuth(firebaseApp);
+    throw error;
+  }
+}
+export const auth = createAuth();
+
+let persistenceReady: Promise<void> | undefined;
+/** Choose durable storage before enabling login, never silently use a session-only login. */
+export function prepareAuthPersistence() {
+  persistenceReady ??= (async () => {
+    await auth.authStateReady();
+    try {
+      await setPersistence(auth, indexedDBLocalPersistence);
+    } catch {
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch {
+        throw new Error("This app cannot save your login. Enable website storage and try again.");
+      }
+    }
+  })().catch((error) => { persistenceReady = undefined; throw error; });
+  return persistenceReady;
+}
+
+// Consume the redirect result once, including under React Strict Mode.
+let redirectResult: ReturnType<typeof getRedirectResult> | undefined;
+export function completeGoogleRedirect() {
+  redirectResult ??= getRedirectResult(auth);
+  return redirectResult;
+}
+
+export function canUseGoogleRedirect() {
+  return typeof window !== "undefined" && window.location.protocol === "https:"
+    && auth.config.authDomain === window.location.host;
+}
+
+export function isStandaloneApp() {
+  return typeof window !== "undefined" && (
+    window.matchMedia("(display-mode: standalone)").matches
+    || (window.navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
 export const db = getFirestore(firebaseApp);
 export const storage = getStorage(firebaseApp);
 
@@ -44,16 +97,12 @@ export function isRegisteredUser(user: User | null | undefined) {
  * (likes, shares). Guests get a durable anonymous session so likes still
  * save to Firestore without forcing a full sign-in.
  */
+let guestSignIn: Promise<User> | undefined;
 export async function ensureAuthUser(): Promise<User> {
+  await prepareAuthPersistence();
+  // Restoration must finish before a guest login can replace a saved account.
   if (auth.currentUser) return auth.currentUser;
-  const existing = await new Promise<User | null>((resolve) => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      unsub();
-      resolve(user);
-    });
-  });
-  if (existing) return existing;
-  await setPersistence(auth, browserLocalPersistence);
-  const credential = await signInAnonymously(auth);
-  return credential.user;
+  guestSignIn ??= signInAnonymously(auth).then((credential) => credential.user)
+    .finally(() => { guestSignIn = undefined; });
+  return guestSignIn;
 }
